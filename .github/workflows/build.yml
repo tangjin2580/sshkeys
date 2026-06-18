@@ -45,10 +45,16 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             SEP=";"
+            ICON="--icon asset/icon.ico"
+          elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            SEP=":"
+            ICON="--icon asset/icon.ico"
           else
             SEP=":"
+            ICON="--icon asset/icon.icns"
           fi
           pyinstaller --onefile --console --name ${{ matrix.artifact_name }} \
+            $ICON \
             --add-data "templates${SEP}templates" \
             --add-data "static${SEP}static" \
             --hidden-import modules \
