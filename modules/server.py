@@ -36,6 +36,37 @@ from modules.connections_store import (
 
 logger = logging.getLogger(__name__)
 
+# --- CDN 可达性检测 ---
+_cdn_available: bool | None = None
+
+CDN_TARGETS = [
+    ("https://fonts.googleapis.com", "Google Fonts"),
+    ("https://unpkg.com", "unpkg CDN"),
+]
+
+def _check_cdn(timeout: float = 3.0) -> bool:
+    """启动时检测外部 CDN 是否可达，结果缓存"""
+    import urllib.request
+    import urllib.error
+    ok_count = 0
+    for url, label in CDN_TARGETS:
+        try:
+            req = urllib.request.Request(url, method="HEAD",
+                                         headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status < 400:
+                    logger.info(f"  CDN 可达: {label} ({url})")
+                    ok_count += 1
+                else:
+                    logger.warning(f"  CDN 异常: {label} → HTTP {resp.status}")
+        except Exception as e:
+            logger.warning(f"  CDN 不可达: {label} → {e}")
+    # 至少有一个 CDN 可达即视为可用
+    available = ok_count > 0
+    logger.info(f"  CDN 总体状态: {'✅ 可用（使用 CDN 加速）' if available else '❌ 不可达（使用本地资源）'}")
+    return available
+
+
 # --- Flask App 初始化 ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = BASE_DIR / "templates"
@@ -75,7 +106,7 @@ def _create_progress_callback():
 @app.route("/")
 def index():
     """主页面"""
-    return render_template("index.html", key_types=KEY_TYPES)
+    return render_template("index.html", key_types=KEY_TYPES, cdn_available=_cdn_available)
 
 
 # ==================== SSE 端点 ====================
@@ -109,7 +140,6 @@ def sse_events():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
     )
 
@@ -602,6 +632,34 @@ def connect_to_server():
 
 # ==================== 启动 ====================
 
+class _StripHopByHopHeaders:
+    """
+    WSGI 中间件：移除响应中的 hop-by-hop 头部。
+    Waitress 严格遵守 PEP 3333，禁止 WSGI 应用设置 Connection / Keep-Alive 等头部，
+    但 Werkzeug 会自动添加 Connection: keep-alive，需要在此拦截。
+    """
+    _HOP_BY_HOP = frozenset({
+        "connection", "keep-alive", "proxy-authenticate",
+        "proxy-authorization", "te", "trailer",
+        "transfer-encoding", "upgrade",
+    })
+
+    def __init__(self, app):
+        self._app = app
+
+    def __call__(self, environ, start_response):
+        def _filtered_start_response(status, headers, exc_info=None):
+            headers = [
+                (k, v) for k, v in headers
+                if k.lower() not in self._HOP_BY_HOP
+            ]
+            return start_response(status, headers, exc_info)
+        return self._app(environ, _filtered_start_response)
+
+
 def create_app():
     """创建 Flask 应用实例"""
-    return app
+    global _cdn_available
+    logger.info("  正在检测 CDN 可达性...")
+    _cdn_available = _check_cdn()
+    return _StripHopByHopHeaders(app)

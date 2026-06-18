@@ -11,6 +11,7 @@ import logging
 import threading
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from modules.utils import safe_chmod
 
@@ -34,7 +35,7 @@ def get_config_path() -> Path:
 
 def list_existing_keys() -> list[dict]:
     """
-    递归扫描 ~/.ssh 目录及其子目录中所有的私钥文件
+    递归扫描 ~/.ssh 目录及其子目录中所有的私钥文件（多线程并行）
 
     Returns:
         [{"name": "id_ed25519", "path": "/Users/xxx/.ssh/id_ed25519",
@@ -42,18 +43,18 @@ def list_existing_keys() -> list[dict]:
     """
     ssh_dir = get_ssh_dir()
     logger.info(f"扫描 SSH 目录: {ssh_dir}")
-    
+
     if not ssh_dir.exists():
         logger.warning(f"SSH 目录不存在: {ssh_dir}")
         return []
 
-    keys = []
     # 排除非密钥文件
     skip_names = {"known_hosts", "known_hosts.old", "authorized_keys", "config", "environment"}
-    skip_prefixes = (".",)  # 隐藏文件：.DS_Store 等
+    skip_prefixes = (".",)
 
+    # --- 阶段 1: 快速收集候选文件路径 ---
+    candidates = []
     try:
-        # 使用 rglob 递归扫描所有文件
         for entry in sorted(ssh_dir.rglob("*"), key=lambda x: str(x)):
             if not entry.is_file():
                 continue
@@ -63,31 +64,47 @@ def list_existing_keys() -> list[dict]:
                 continue
             if entry.name.startswith(skip_prefixes):
                 continue
-
-            # 只保留真正的密钥文件（内容以 PEM 头开头）
-            key_type = _guess_key_type(entry)
-            if key_type == "unknown":
-                continue
-
-            # 检查同级目录是否有对应的 .pub 文件
-            pub_path = entry.parent / f"{entry.name}.pub"
-            
-            # 生成显示名称：如果在子目录中，包含相对路径
-            try:
-                rel_path = entry.relative_to(ssh_dir)
-                display_name = str(rel_path).replace("\\", "/")
-            except ValueError:
-                display_name = entry.name
-            
-            keys.append({
-                "name": display_name,
-                "path": str(entry),
-                "has_pub": pub_path.exists(),
-                "size": entry.stat().st_size,
-                "type": key_type,
-            })
+            candidates.append(entry)
     except PermissionError:
         logger.warning("无法读取 ~/.ssh 目录")
+        return []
+
+    if not candidates:
+        return []
+
+    # --- 阶段 2: 多线程并行检测密钥类型 ---
+    def _process_file(entry: Path) -> dict | None:
+        key_type = _guess_key_type(entry)
+        if key_type == "unknown":
+            return None
+        pub_path = entry.parent / f"{entry.name}.pub"
+        try:
+            rel_path = entry.relative_to(ssh_dir)
+            display_name = str(rel_path).replace("\\", "/")
+        except ValueError:
+            display_name = entry.name
+        return {
+            "name": display_name,
+            "path": str(entry),
+            "has_pub": pub_path.exists(),
+            "size": entry.stat().st_size,
+            "type": key_type,
+        }
+
+    keys = []
+    with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as pool:
+        futures = {pool.submit(_process_file, f): f for f in candidates}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                if result:
+                    keys.append(result)
+            except Exception as e:
+                logger.warning(f"扫描文件失败 {futures[future]}: {e}")
+
+    # 按路径排序保持显示顺序一致
+    keys.sort(key=lambda k: k["path"])
+    logger.info(f"找到 {len(keys)} 个密钥: {[k['name'] for k in keys]}")
     return keys
 
 
