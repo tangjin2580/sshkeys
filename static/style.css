@@ -1,64 +1,68 @@
 /* ============================================================
-   SSH Key Manager — 配色 & 视觉提取自 ai.codefather.cn
-   品牌蓝 #3874F7 / 灰度文字层级 / Tailwind 阴影 / 纯白卡片
+   SSH Key Manager — Grayscale 暗色美学设计系统
+   提取自 Start Bootstrap - Grayscale v7.0.6
+   品牌色 #64a19d / 黑白灰渐变 / Nunito + Varela Round
    ============================================================ */
+
+/* ----- Google Fonts (已通过 HTML <link> 加载) ----- */
+/* Nunito: 200-900 | Varela Round: 400 */
 
 /* ----- CSS 变量 ----- */
 :root {
-    /* 背景 */
-    --bg: #f9fafb;                       /* gray-50 页面底色 */
-    --bg-card: #ffffff;                  /* 纯白卡片 */
-    --bg-card-hover: #ffffff;
-    --bg-input: #ffffff;
-    --bg-muted: #f3f4f6;                 /* gray-100 次级背景 */
-    --bg-muted-hover: #e5e7eb;           /* gray-200 */
+    /* 品牌色（Grayscale 青绿色系） */
+    --primary: #64a19d;                    /* 青绿主色 */
+    --primary-rgb: 100, 161, 157;
+    --primary-dark: #4a827e;
+    --primary-light: rgba(100, 161, 157, 0.15);
 
-    /* 文字 — gray 体系 */
-    --text: #1f2937;                     /* gray-800 标题 / 主文字 */
-    --text-body: #374151;                /* gray-700 正文 */
-    --text-secondary: #6b7280;           /* gray-500 辅助 */
-    --text-muted: #9ca3af;               /* gray-400 弱化 */
+    --success: #67c29c;
+    --success-dark: #4d9f7a;
+    --danger: #a16468;
+    --danger-dark: #8b4f53;
+    --warning: #e4c662;
+    --info: #1cabc4;
 
-    /* 品牌色 */
-    --primary: #3874F7;                  /* 品牌蓝 */
-    --primary-hover: #2563eb;            /* blue-600 */
-    --primary-ring: rgba(56, 116, 247, 0.2);
-    --primary-bg: rgba(56, 116, 247, 0.06);
+    /* 暗色背景体系 */
+    --bg: #000;                            /* 纯黑页底 */
+    --bg-gradient: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.92) 75%, rgba(0, 0, 0, 0.85) 100%);
+    --bg-card: rgba(255, 255, 255, 0.06);  /* 半透明暗色卡片 */
+    --bg-card-hover: rgba(255, 255, 255, 0.09);
+    --bg-input: rgba(255, 255, 255, 0.08);
+    --bg-muted: rgba(255, 255, 255, 0.04);
+    --bg-light-section: #f8f9fa;           /* 浅色穿插区 */
 
-    /* 语义色 */
-    --success: #16a34a;                  /* green-600 */
-    --success-hover: #15803d;            /* green-700 */
-    --success-bg: rgba(22, 163, 74, 0.08);
-
-    --danger: #ef4444;                   /* red-500 */
-    --danger-hover: #dc2626;             /* red-600 */
-    --danger-bg: rgba(239, 68, 68, 0.08);
-
-    --warning: #f59e0b;                  /* amber-500 */
-    --warning-bg: rgba(245, 158, 11, 0.08);
+    /* 文字 — 白→灰层级 */
+    --text: #ffffff;
+    --text-body: rgba(255, 255, 255, 0.85);
+    --text-secondary: rgba(255, 255, 255, 0.5);
+    --text-muted: rgba(255, 255, 255, 0.35);
+    --text-dark: #212529;
+    --text-dark-secondary: rgba(0, 0, 0, 0.5);
 
     /* 边框 */
-    --border: #e5e7eb;                   /* gray-200 */
-    --border-hover: #d1d5db;             /* gray-300 */
-    --border-focus: #93c5fd;             /* blue-300 */
+    --border: rgba(255, 255, 255, 0.1);
+    --border-hover: rgba(255, 255, 255, 0.18);
+    --border-focus: #64a19d;
+    --border-light: #dee2e6;
 
-    /* 阴影 — Tailwind 体系 */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+    /* 阴影 */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.5);
 
     /* 圆角 */
-    --radius-sm: 8px;
-    --radius-md: 12px;                   /* rounded-xl */
-    --radius-lg: 16px;                   /* rounded-2xl */
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 1rem;
 
     /* 动画 */
     --transition: 0.2s ease;
 
     /* 字体 */
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-heading: 'Varela Round', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
     --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono',
         'Consolas', 'Monaco', monospace;
 }
@@ -69,14 +73,18 @@
 html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
 }
 
 body {
-    font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 1.6;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
     color: var(--text-body);
     background: var(--bg);
+    background-image: var(--bg-gradient);
+    background-attachment: fixed;
     min-height: 100vh;
 }
 
@@ -84,80 +92,94 @@ body {
 .container {
     max-width: 1140px;
     margin: 0 auto;
-    padding: 28px 24px 100px;
+    padding: 3rem 1.5rem 6rem;
 }
 
-/* ----- 双栏网格（桌面端）----- */
+/* ----- 双栏网格 ----- */
 .main-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 1.5rem;
     align-items: start;
 }
 
 .col-left, .col-right {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 1.5rem;
 }
 
 /* ============================================================
-   头部
+   头部 — Masthead 风格
    ============================================================ */
 .header {
     text-align: center;
-    padding: 36px 0 32px;
+    padding: 4rem 0 3rem;
     grid-column: 1 / -1;
 }
 
 .header h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: -0.02em;
-}
-
-.header h1 .gradient {
-    background: linear-gradient(135deg, #3874F7 0%, #6366f1 50%, #a855f7 100%);
+    font-family: var(--font-heading);
+    font-size: 2.5rem;
+    line-height: 1.1;
+    letter-spacing: 0.3rem;
+    text-transform: uppercase;
+    /* Grayscale 标志性文字渐变：白→透明 */
+    background: linear-gradient(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.5));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    margin-bottom: 0.5rem;
 }
 
 .subtitle {
+    font-size: 1.05rem;
     color: var(--text-secondary);
-    font-size: 0.95rem;
-    margin-top: 6px;
-    font-weight: 400;
+    font-weight: 300;
+    max-width: 30rem;
+    margin: 0.5rem auto 0;
 }
 
 /* ============================================================
-   卡片
+   卡片 — 暗色半透明 + 底部主色边框
    ============================================================ */
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border);
+    border-bottom: 0.25rem solid var(--primary);
     border-radius: var(--radius-md);
-    padding: 24px;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow var(--transition), border-color var(--transition),
-                transform var(--transition);
+    padding: 1.75rem;
+    transition: border-color var(--transition), background var(--transition),
+                box-shadow var(--transition);
 }
 
 .card:hover {
-    box-shadow: var(--shadow-md);
+    background: var(--bg-card-hover);
     border-color: var(--border-hover);
+    box-shadow: var(--shadow-sm);
 }
 
 .section-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    margin-bottom: 18px;
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.15rem;
+    margin-bottom: 1.25rem;
     color: var(--text);
     display: flex;
     align-items: center;
-    gap: 8px;
-    letter-spacing: -0.01em;
+    gap: 0.5rem;
+}
+
+/* 卡片内细分隔线 — Grayscale 风格：短粗主色线 */
+.card-divider {
+    width: 3rem;
+    height: 0.25rem;
+    background: var(--primary);
+    margin: 0.75rem 0 1.25rem;
+    border: none;
+    opacity: 1;
 }
 
 /* ============================================================
@@ -165,15 +187,15 @@ body {
    ============================================================ */
 .form-row {
     display: flex;
-    gap: 12px;
-    margin-bottom: 14px;
+    gap: 0.75rem;
+    margin-bottom: 0.875rem;
 }
 
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 0.375rem;
+    margin-bottom: 0.875rem;
 }
 
 .form-row .form-group { margin-bottom: 0; }
@@ -181,8 +203,11 @@ body {
 .flex-1 { flex: 1; }
 
 .form-group label {
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-family: var(--font-heading);
+    font-size: 0.7rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
     color: var(--text-secondary);
 }
 
@@ -190,25 +215,27 @@ body {
     font-size: 0.75rem;
     color: var(--text-muted);
     line-height: 1.5;
+    font-weight: 300;
 }
 
 .form-group small a {
     color: var(--primary);
     text-decoration: none;
 }
-
 .form-group small a:hover { text-decoration: underline; }
 
 .form-input, .form-select {
     background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 9px 14px;
+    padding: 0.7rem 1rem;
     color: var(--text);
-    font-size: 0.88rem;
-    font-family: inherit;
+    font-size: 0.9rem;
+    font-family: var(--font-body);
+    font-weight: 400;
     transition: all var(--transition);
     outline: none;
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0, 0, 0, 0.1);
 }
 
 .form-input:hover, .form-select:hover {
@@ -216,8 +243,9 @@ body {
 }
 
 .form-input:focus, .form-select:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px var(--primary-ring);
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(100, 161, 157, 0.25);
+    background: rgba(255, 255, 255, 0.12);
 }
 
 .form-input::placeholder { color: var(--text-muted); }
@@ -225,10 +253,10 @@ body {
 .form-select {
     cursor: pointer;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%239ca3af' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 32px;
+    background-position: right 0.75rem center;
+    padding-right: 2rem;
 }
 
 /* ============================================================
@@ -238,23 +266,24 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 9px 20px;
+    gap: 0.375rem;
+    padding: 0.7rem 1.5rem;
     border: none;
     border-radius: var(--radius-sm);
-    font-size: 0.88rem;
-    font-weight: 500;
-    font-family: inherit;
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
     cursor: pointer;
     transition: all var(--transition);
     outline: none;
     text-decoration: none;
     white-space: nowrap;
-    letter-spacing: -0.01em;
 }
 
 .btn:disabled {
-    opacity: 0.45;
+    opacity: 0.4;
     cursor: not-allowed;
     pointer-events: none;
 }
@@ -263,69 +292,62 @@ body {
 .btn-primary {
     background: var(--primary);
     color: #fff;
-    box-shadow: 0 1px 3px rgba(56, 116, 247, 0.3);
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: var(--primary-hover);
-    box-shadow: 0 4px 12px rgba(56, 116, 247, 0.35);
+    background: var(--primary-dark);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-1px);
 }
 
 .btn-primary:active:not(:disabled) {
-    transform: translateY(0) scale(0.98);
-    box-shadow: 0 1px 2px rgba(56, 116, 247, 0.2);
+    transform: translateY(0);
 }
 
 /* Large */
 .btn-lg {
-    padding: 12px 32px;
-    font-size: 0.95rem;
-    font-weight: 600;
+    padding: 1rem 2rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.15rem;
     width: 100%;
     border-radius: var(--radius-sm);
-    margin-top: 4px;
+    margin-top: 0.25rem;
 }
 
 /* Success */
 .btn-success {
     background: var(--success);
     color: #fff;
-    box-shadow: 0 1px 3px rgba(22, 163, 74, 0.3);
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0, 0, 0, 0.1);
 }
 
 .btn-success:hover:not(:disabled) {
-    background: var(--success-hover);
-    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+    background: var(--success-dark);
     transform: translateY(-1px);
-}
-
-.btn-success:active:not(:disabled) {
-    transform: translateY(0) scale(0.98);
 }
 
 /* Danger */
 .btn-danger {
     background: var(--danger);
     color: #fff;
-    box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0, 0, 0, 0.1);
 }
 
 .btn-danger:hover:not(:disabled) {
-    background: var(--danger-hover);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+    background: var(--danger-dark);
     transform: translateY(-1px);
 }
 
 /* Outline */
 .btn-outline {
-    background: var(--bg-card);
+    background: transparent;
     color: var(--text);
     border: 1px solid var(--border);
 }
 
 .btn-outline:hover:not(:disabled) {
-    background: var(--bg-muted);
+    background: var(--bg-input);
     border-color: var(--border-hover);
 }
 
@@ -334,58 +356,62 @@ body {
     color: var(--danger);
     background: transparent;
     border: none;
-    padding: 6px 12px;
+    padding: 0.375rem 0.75rem;
 }
 
 .btn-danger-text:hover:not(:disabled) {
-    background: var(--danger-bg);
+    background: rgba(161, 100, 104, 0.12);
 }
 
 /* Block */
 .btn-block {
     width: 100%;
-    padding: 10px 20px;
+    padding: 0.7rem 1.5rem;
     border-radius: var(--radius-sm);
 }
 
 /* Small */
-.btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 6px; }
+.btn-sm {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.08rem;
+    border-radius: 0.25rem;
+}
 
 /* ============================================================
    密钥展示
    ============================================================ */
 .key-info {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
-    margin-bottom: 10px;
+    margin-bottom: 0.75rem;
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     flex-wrap: wrap;
 }
 
 .key-info span {
-    background: var(--primary-bg);
-    padding: 3px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(56, 116, 247, 0.12);
+    background: var(--primary-light);
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.25rem;
     font-family: var(--font-mono);
-    font-size: 0.73rem;
+    font-size: 0.7rem;
     color: var(--primary);
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .key-box {
     background: var(--bg-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 14px;
+    padding: 0.875rem;
     overflow-x: auto;
-    margin-bottom: 12px;
+    margin-bottom: 0.75rem;
 }
 
 .key-text {
     font-family: var(--font-mono);
-    font-size: 0.76rem;
+    font-size: 0.73rem;
     color: var(--success);
     word-break: break-all;
     line-height: 1.7;
@@ -394,7 +420,7 @@ body {
 
 .key-actions {
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     flex-wrap: wrap;
 }
 
@@ -404,22 +430,24 @@ body {
 .tabs {
     display: flex;
     gap: 0;
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
     background: var(--bg-muted);
     border-radius: var(--radius-sm);
-    padding: 4px;
+    padding: 0.25rem;
 }
 
 .tab {
     flex: 1;
-    padding: 8px 16px;
+    padding: 0.5rem 1rem;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 0.25rem;
     color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-weight: 500;
-    font-family: inherit;
+    font-family: var(--font-heading);
+    font-size: 0.7rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.08rem;
     cursor: pointer;
     transition: all var(--transition);
 }
@@ -427,14 +455,13 @@ body {
 .tab:hover { color: var(--text); }
 
 .tab.active {
-    background: #fff;
+    background: rgba(255, 255, 255, 0.12);
     color: var(--text);
-    box-shadow: var(--shadow-sm);
 }
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
-.tab-panel .form-group { margin-bottom: 14px; }
+.tab-panel .form-group { margin-bottom: 0.875rem; }
 
 /* ============================================================
    本地密钥 & Config 条目列表
@@ -443,19 +470,19 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 0.625rem 0.875rem;
     background: var(--bg-muted);
-    border: 1px solid var(--border);
+    border-left: 0.25rem solid transparent;
     border-radius: var(--radius-sm);
-    margin-bottom: 8px;
+    margin-bottom: 0.5rem;
     font-size: 0.84rem;
-    gap: 10px;
-    transition: border-color var(--transition), box-shadow var(--transition);
+    gap: 0.625rem;
+    transition: border-color var(--transition), background var(--transition);
 }
 
 .key-item:hover {
-    border-color: var(--border-hover);
-    box-shadow: var(--shadow-sm);
+    background: var(--bg-input);
+    border-left-color: var(--primary);
 }
 
 .key-item:last-child { margin-bottom: 0; }
@@ -463,7 +490,7 @@ body {
 .key-item-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0.625rem;
     min-width: 0;
     flex: 1;
 }
@@ -479,56 +506,56 @@ body {
 
 .key-item-meta {
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     flex-shrink: 0;
 }
 
 .key-item-badge {
     display: inline-block;
-    padding: 2px 8px;
-    background: var(--primary-bg);
+    padding: 0.125rem 0.5rem;
+    background: var(--primary-light);
     color: var(--primary);
-    border-radius: 10px;
-    font-size: 0.7rem;
+    border-radius: 0.75rem;
+    font-size: 0.65rem;
     font-family: var(--font-mono);
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
 }
 
-.key-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.key-item-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
 
 .config-empty {
     color: var(--text-muted);
     font-size: 0.84rem;
-    padding: 6px 0;
+    padding: 0.375rem 0;
 }
 
 .config-entry {
     background: var(--bg-muted);
-    border: 1px solid var(--border);
+    border-left: 0.25rem solid transparent;
     border-radius: var(--radius-sm);
-    padding: 12px 14px;
-    margin-bottom: 8px;
+    padding: 0.75rem 0.875rem;
+    margin-bottom: 0.5rem;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 10px;
-    transition: border-color var(--transition), box-shadow var(--transition);
+    gap: 0.625rem;
+    transition: border-color var(--transition), background var(--transition);
 }
 
 .config-entry:hover {
-    border-color: var(--border-hover);
-    box-shadow: var(--shadow-sm);
+    background: var(--bg-input);
+    border-left-color: var(--primary);
 }
 
 .config-entry-content {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     line-height: 1.7;
-    color: var(--text);
+    color: var(--text-body);
     white-space: pre-wrap;
     flex: 1;
     min-width: 0;
@@ -539,7 +566,7 @@ body {
     font-weight: 600;
 }
 
-.config-entry-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.config-entry-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
 
 /* ============================================================
    操作日志
@@ -550,21 +577,20 @@ body {
     background: var(--bg-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 12px;
+    padding: 0.75rem;
     max-height: 200px;
     overflow-y: auto;
     font-family: var(--font-mono);
-    font-size: 0.76rem;
+    font-size: 0.73rem;
 }
 
 .log-entry {
-    padding: 3px 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 0.1875rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
-
 .log-entry:last-child { border-bottom: none; }
 
-.log-time { color: var(--text-muted); margin-right: 8px; }
+.log-time { color: var(--text-muted); margin-right: 0.5rem; }
 
 .log-success { color: var(--success); }
 .log-error { color: var(--danger); }
@@ -572,12 +598,12 @@ body {
 .log-info { color: var(--text-secondary); }
 
 /* ============================================================
-   Modal 二次确认弹窗
+   Modal — 暗色玻璃
    ============================================================ */
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     z-index: 1000;
@@ -588,34 +614,39 @@ body {
 }
 
 .modal-card {
-    background: var(--bg-card);
+    background: #1a1a1a;
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 32px 36px;
+    border-bottom: 0.25rem solid var(--primary);
+    border-radius: var(--radius-md);
+    padding: 2rem 2.25rem;
     max-width: 400px;
     width: 92%;
     text-align: center;
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--shadow-lg);
     animation: scaleIn 0.2s ease;
 }
 
-.modal-icon { font-size: 2.5rem; margin-bottom: 16px; }
+.modal-icon { font-size: 2.5rem; margin-bottom: 1rem; }
 
 .modal-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    margin-bottom: 10px;
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.12rem;
+    margin-bottom: 0.625rem;
     color: var(--text);
 }
 
 .modal-body {
     font-size: 0.88rem;
     color: var(--text-secondary);
-    margin-bottom: 24px;
+    margin-bottom: 1.5rem;
     line-height: 1.6;
+    font-weight: 300;
 }
 
-.modal-actions { display: flex; gap: 10px; justify-content: center; }
+.modal-actions { display: flex; gap: 0.625rem; justify-content: center; }
 .modal-actions .btn { min-width: 100px; }
 
 /* ============================================================
@@ -623,16 +654,19 @@ body {
    ============================================================ */
 .toast {
     position: fixed;
-    top: 24px;
-    right: 24px;
-    padding: 14px 24px;
-    border-radius: var(--radius-md);
+    top: 1.5rem;
+    right: 1.5rem;
+    padding: 0.875rem 1.5rem;
+    border-radius: var(--radius-sm);
     color: #fff;
-    font-size: 0.88rem;
-    font-weight: 500;
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.08rem;
     z-index: 1100;
     animation: slideIn 0.3s ease;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-md);
 }
 
 .toast-success { background: var(--success); }
@@ -645,29 +679,32 @@ body {
 .connections-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
+    gap: 1.25rem;
 }
 
 .conn-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
+    border-bottom: 0.25rem solid var(--primary);
     border-radius: var(--radius-md);
-    padding: 22px 24px;
+    padding: 1.5rem 1.75rem;
     transition: all var(--transition);
     position: relative;
-    box-shadow: var(--shadow-sm);
 }
 
 .conn-card:hover {
-    box-shadow: var(--shadow-md);
-    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-2px);
 }
 
 .conn-alias {
-    font-size: 1rem;
-    font-weight: 600;
-    margin-bottom: 4px;
+    font-family: var(--font-heading);
+    font-size: 0.85rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
+    margin-bottom: 0.25rem;
     color: var(--text);
 }
 
@@ -675,58 +712,60 @@ body {
     font-family: var(--font-mono);
     color: var(--primary);
     background: none;
-    font-size: 1rem;
+    font-size: 0.95rem;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .conn-addr {
     font-size: 0.84rem;
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: 0.375rem;
     font-family: var(--font-mono);
+    font-weight: 300;
 }
 
 .conn-key {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    margin-bottom: 14px;
+    margin-bottom: 0.875rem;
     word-break: break-all;
 }
 
 .conn-key.valid { color: var(--success); }
 .conn-key.invalid { color: var(--danger); }
 
-.conn-actions { display: flex; gap: 8px; }
+.conn-actions { display: flex; gap: 0.5rem; }
 
 .conn-actions .btn {
-    font-size: 0.82rem;
-    padding: 8px 18px;
-    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    padding: 0.5rem 1rem;
+    letter-spacing: 0.08rem;
 }
 
 .conn-connect {
     background: var(--success);
     color: #fff;
     flex: 1;
-    font-weight: 600;
-    box-shadow: 0 1px 3px rgba(22, 163, 74, 0.3);
+    font-weight: 400;
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0, 0, 0, 0.1);
 }
 
 .conn-connect:hover:not(:disabled) {
-    background: var(--success-hover);
-    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+    background: var(--success-dark);
     transform: translateY(-1px);
 }
 
 .conn-delete {
     color: var(--danger);
     background: transparent;
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(161, 100, 104, 0.25);
 }
 
 .conn-delete:hover {
-    background: var(--danger-bg);
-    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(161, 100, 104, 0.1);
+    border-color: rgba(161, 100, 104, 0.4);
 }
 
 /* ============================================================
@@ -736,35 +775,42 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 0;
+    padding: 1rem 0;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
+    margin-bottom: 1.5rem;
 }
 
 .nav-back {
     color: var(--primary);
     text-decoration: none;
-    font-size: 0.88rem;
-    font-weight: 500;
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
     transition: opacity var(--transition);
 }
-
 .nav-back:hover { opacity: 0.7; }
 
 .nav-title {
-    font-size: 1rem;
-    font-weight: 600;
+    font-family: var(--font-heading);
+    font-size: 0.85rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.12rem;
     color: var(--text);
 }
 
 .nav-link {
     color: var(--primary);
     text-decoration: none;
-    font-size: 0.88rem;
-    font-weight: 500;
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
     transition: opacity var(--transition);
 }
-
 .nav-link:hover { opacity: 0.7; }
 
 /* ============================================================
@@ -772,46 +818,48 @@ body {
    ============================================================ */
 .empty-state {
     text-align: center;
-    padding: 56px 20px;
+    padding: 3.5rem 1.25rem;
     color: var(--text-muted);
 }
 
-.empty-state .icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.6; }
-
-.empty-state p { margin: 6px 0; font-size: 0.88rem; }
+.empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+.empty-state p { margin: 0.375rem 0; font-size: 0.88rem; font-weight: 300; }
 
 /* ============================================================
-   手动添加连接（折叠面板）
+   手动添加连接
    ============================================================ */
-.add-section { margin-top: 28px; }
+.add-section { margin-top: 1.75rem; }
 
 .add-section summary {
     cursor: pointer;
     color: var(--primary);
-    font-size: 0.88rem;
-    font-weight: 500;
-    padding: 10px 0;
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
+    padding: 0.625rem 0;
     outline: none;
 }
 
 .add-form {
-    margin-top: 14px;
-    padding: 20px;
+    margin-top: 0.875rem;
+    padding: 1.25rem;
     background: var(--bg-muted);
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
 }
-
-.add-form .form-row { gap: 12px; }
+.add-form .form-row { gap: 0.75rem; }
 
 /* ============================================================
    页脚
    ============================================================ */
 .footer {
     text-align: center;
-    padding: 16px;
+    padding: 3rem 1rem;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
+    font-weight: 300;
 }
 
 /* ============================================================
@@ -841,14 +889,14 @@ body {
    ============================================================ */
 .spinner {
     display: inline-block;
-    width: 16px;
-    height: 16px;
+    width: 1rem;
+    height: 1rem;
     border: 2px solid rgba(255, 255, 255, 0.3);
     border-top-color: #fff;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
     vertical-align: middle;
-    margin-right: 6px;
+    margin-right: 0.375rem;
 }
 
 .loading-text {
@@ -857,99 +905,20 @@ body {
 }
 
 /* ============================================================
-   响应式 — 移动端单栏
+   响应式
    ============================================================ */
 @media (max-width: 768px) {
-    .main-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .container {
-        padding: 16px 14px 80px;
-    }
-
-    .header h1 { font-size: 1.5rem; }
-    .header { padding: 24px 0 20px; }
-
+    .main-grid { grid-template-columns: 1fr; }
+    .container { padding: 2rem 1rem 4rem; }
+    .header { padding: 2.5rem 0 1.5rem; }
+    .header h1 { font-size: 1.6rem; letter-spacing: 0.15rem; }
     .form-row { flex-direction: column; }
-    .card { padding: 18px; }
-
-    .tabs {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-    }
-
-    .tab {
-        padding: 7px 12px;
-        font-size: 0.78rem;
-        white-space: nowrap;
-        flex: none;
-    }
-
-    .key-item {
-        flex-direction: column;
-        align-items: flex-start !important;
-    }
-
+    .card { padding: 1.25rem; }
+    .tabs { overflow-x: auto; flex-wrap: nowrap; }
+    .tab { padding: 0.4rem 0.75rem; font-size: 0.65rem; white-space: nowrap; flex: none; }
+    .key-item { flex-direction: column; align-items: flex-start !important; }
     .key-item-actions { align-self: flex-end; }
-
-    .connections-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .toast {
-        top: 12px;
-        right: 12px;
-        left: 12px;
-    }
-
-    .modal-card {
-        width: 96%;
-        padding: 24px 20px;
-    }
-}
-
-/* ============================================================
-   暗黑模式 — 自动跟随系统
-   ============================================================ */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg: #0f172a;                    /* slate-900 */
-        --bg-card: #1e293b;               /* slate-800 */
-        --bg-card-hover: #1e293b;
-        --bg-input: #1e293b;
-        --bg-muted: #334155;              /* slate-700 */
-        --bg-muted-hover: #475569;        /* slate-600 */
-
-        --text: #f1f5f9;                  /* slate-100 */
-        --text-body: #e2e8f0;             /* slate-200 */
-        --text-secondary: #94a3b8;        /* slate-400 */
-        --text-muted: #64748b;            /* slate-500 */
-
-        --border: #334155;                /* slate-700 */
-        --border-hover: #475569;          /* slate-600 */
-        --border-focus: #3874F7;
-
-        --primary-ring: rgba(56, 116, 247, 0.3);
-
-        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.25);
-        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
-        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-
-        --primary-bg: rgba(56, 116, 247, 0.12);
-        --success-bg: rgba(22, 163, 74, 0.12);
-        --danger-bg: rgba(239, 68, 68, 0.12);
-        --warning-bg: rgba(245, 158, 11, 0.12);
-    }
-
-    .modal-overlay {
-        background: rgba(0, 0, 0, 0.6);
-    }
-
-    .tab.active {
-        background: var(--bg-muted);
-        color: #fff;
-        box-shadow: none;
-    }
+    .connections-grid { grid-template-columns: 1fr; }
+    .toast { top: 0.75rem; right: 0.75rem; left: 0.75rem; }
+    .modal-card { width: 96%; padding: 1.5rem 1.25rem; }
 }
