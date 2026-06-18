@@ -1,12 +1,145 @@
-// ============ 状态 ============
+// ============ State ============
 let sseSource = null;
 let currentDeployProps = null;
+let wipeAnimating = false;
 
-// ============ 初始化 ============
-document.addEventListener("DOMContentLoaded", () => {
-    initSSE();
-    loadExistingConfig();
-});
+// ============ 主题切换（含对角线 wipe 动画） ============
+function initThemeToggle() {
+    const btn = document.getElementById('theme-toggle-btn');
+    if (!btn) return;
+
+    const docEl = document.documentElement;
+    const container = btn.querySelector('.theme-toggle__container');
+    const wipe = document.getElementById('themeWipe');
+
+    function updateTheme(isDark) {
+        docEl.classList.toggle('dark', isDark);
+        if (isDark) {
+            docEl.removeAttribute('data-theme');
+        } else {
+            docEl.setAttribute('data-theme', 'light');
+        }
+        btn.setAttribute('aria-checked', String(isDark));
+        btn.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+        try {
+            localStorage.setItem('app-theme', isDark ? 'dark' : 'light');
+        } catch (e) {
+            console.warn('Could not save theme to localStorage.', e);
+        }
+    }
+
+    function runWipe(isDark) {
+        if (wipeAnimating || !wipe) return;
+        wipeAnimating = true;
+
+        // 动画期间禁用页面背景过渡
+        docEl.classList.add('wiping');
+
+        // 立即切换主题：按钮动画在遮罩下同步进行
+        updateTheme(isDark);
+
+        // 计算切换按钮在视口中的中心坐标
+        const btnRect = btn.getBoundingClientRect();
+        const cx = btnRect.left + btnRect.width / 2;
+        const cy = btnRect.top + btnRect.height / 2;
+
+        // 计算覆盖全屏所需的最小圆半径
+        const maxDist = Math.max(
+            Math.hypot(cx, cy),
+            Math.hypot(window.innerWidth - cx, cy),
+            Math.hypot(cx, window.innerHeight - cy),
+            Math.hypot(window.innerWidth - cx, window.innerHeight - cy)
+        );
+        const radius = Math.ceil(maxDist) + 20;
+
+        const duration = '0.75s cubic-bezier(0.65, 0, 0.35, 1)';
+
+        if (isDark) {
+            // 黑夜模式：圆形从按钮放大到全屏
+            wipe.style.transition = 'clip-path 0s';
+            wipe.style.clipPath = `circle(0 at ${cx}px ${cy}px)`;
+            void wipe.offsetWidth;
+            wipe.style.transition = `clip-path ${duration}`;
+            wipe.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
+        } else {
+            // 白天模式：圆形从全屏缩小到按钮
+            wipe.style.transition = 'clip-path 0s';
+            wipe.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
+            void wipe.offsetWidth;
+            wipe.style.transition = `clip-path ${duration}`;
+            wipe.style.clipPath = `circle(0 at ${cx}px ${cy}px)`;
+        }
+
+        function onFinish() {
+            wipe.removeEventListener('transitionend', onFinish);
+            wipe.style.clipPath = '';
+            wipe.style.transition = '';
+            docEl.classList.remove('wiping');
+            wipeAnimating = false;
+        }
+        wipe.addEventListener('transitionend', onFinish);
+        setTimeout(onFinish, 800);
+    }
+
+    function handleClick() {
+        const isDark = docEl.classList.contains('dark');
+        if (wipe) {
+            runWipe(!isDark);
+        } else {
+            updateTheme(!isDark);
+        }
+    }
+
+    function handleContainerTransitionEnd(e) {
+        if (e.target !== container || e.propertyName !== 'background-color') return;
+        // No-op now, wipe handles timing
+    }
+
+    // 初始化：读取 inline 脚本设置的状态并同步
+    updateTheme(docEl.classList.contains('dark'));
+
+    btn.addEventListener('click', handleClick);
+    container.addEventListener('transitionend', handleContainerTransitionEnd);
+
+    // 监听系统偏好变化
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+        if (!localStorage.getItem('app-theme')) {
+            if (wipe) {
+                runWipe(e.matches);
+            } else {
+                updateTheme(e.matches);
+            }
+        }
+    });
+}
+
+// ============ 菜单面板切换 ============
+function initMenuSwitching() {
+    const menuItems = document.querySelectorAll('.nav-menu-item[data-panel]');
+    if (!menuItems.length) return;
+
+    menuItems.forEach(item => {
+        item.addEventListener('click', function () {
+            const panelId = this.dataset.panel;
+
+            // 更新菜单激活状态
+            menuItems.forEach(mi => mi.classList.remove('active'));
+            this.classList.add('active');
+
+            // 切换内容面板
+            document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+            const targetPanel = document.getElementById(panelId);
+            if (targetPanel) {
+                targetPanel.classList.add('active');
+            }
+
+            // 切换到连接面板时自动加载
+            if (panelId === 'panel-connections') {
+                loadConnections();
+            }
+        });
+    });
+}
 
 // ============ SSE ============
 function initSSE() {
@@ -19,7 +152,8 @@ function initSSE() {
     sseSource.addEventListener("setup_complete", (e) => {
         const d = JSON.parse(e.data);
         log(d.message, d.success ? "success" : "warning");
-        document.getElementById("btnSetupGo").disabled = false;
+        const btnSetupGo = document.getElementById("btnSetupGo");
+        if (btnSetupGo) btnSetupGo.disabled = false;
         loadExistingConfig();
     });
     sseSource.onerror = () => log("连接中断", "warning");
@@ -29,6 +163,7 @@ function initSSE() {
 function log(msg, level = "info") {
     const box = document.getElementById("logBox");
     const section = document.getElementById("logSection");
+    if (!box || !section) return;
     section.style.display = "block";
     const now = new Date().toLocaleTimeString();
     if (box.firstChild && box.firstChild.textContent.includes("等待操作")) box.innerHTML = "";
@@ -52,37 +187,33 @@ function showToast(msg, type = "info") {
 let modalCallback = null;
 
 function showConfirm(title, body, onConfirm) {
+    const modal = document.getElementById("confirmModal");
+    if (!modal) return;
     document.getElementById("modalTitle").textContent = title;
     document.getElementById("modalBody").textContent = body;
     modalCallback = onConfirm;
-    document.getElementById("confirmModal").style.display = "flex";
+    modal.style.display = "flex";
     document.getElementById("modalConfirmBtn").focus();
 }
 
 function closeModal() {
-    document.getElementById("confirmModal").style.display = "none";
+    const modal = document.getElementById("confirmModal");
+    if (!modal) return;
+    modal.style.display = "none";
     modalCallback = null;
 }
 
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && document.getElementById("confirmModal").style.display === "flex") {
+    const modal = document.getElementById("confirmModal");
+    if (e.key === "Escape" && modal && modal.style.display === "flex") {
         closeModal();
     }
-});
-
-// 弹窗背景点击关闭
-document.getElementById("confirmModal").addEventListener("click", (e) => {
-    if (e.target === document.getElementById("confirmModal")) closeModal();
-});
-
-document.getElementById("modalConfirmBtn").addEventListener("click", () => {
-    if (modalCallback) modalCallback();
-    closeModal();
 });
 
 // ============ 密钥生成 ============
 async function generateKey() {
     const btn = document.getElementById("btnGenerate");
+    if (!btn) return;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>正在生成...';
 
@@ -106,8 +237,10 @@ async function generateKey() {
         const data = await res.json();
         if (data.success) {
             showKey(data);
-            document.getElementById("uploadSection").style.display = "block";
-            document.getElementById("setupSection").style.display = "block";
+            const uploadSection = document.getElementById("uploadSection");
+            const setupSection = document.getElementById("setupSection");
+            if (uploadSection) uploadSection.style.display = "block";
+            if (setupSection) setupSection.style.display = "block";
             showToast("密钥生成成功！", "success");
         } else {
             showToast(data.error || "生成失败", "error");
@@ -123,7 +256,9 @@ async function generateKey() {
 }
 
 function showKey(data) {
-    document.getElementById("keyDisplaySection").style.display = "block";
+    const section = document.getElementById("keyDisplaySection");
+    if (!section) return;
+    section.style.display = "block";
     const info = document.getElementById("keyInfo");
     info.innerHTML = `<span>类型: ${data.key_type}</span><span>大小: ${data.key_size} bits</span>`;
     if (data.fingerprint) info.innerHTML += `<span>指纹: ${data.fingerprint}</span>`;
@@ -140,7 +275,9 @@ function switchTab(name) {
 
 // ============ 上传 ============
 async function uploadKey(platform) {
-    const pubKey = document.getElementById("publicKeyText").textContent.trim();
+    const pubKeyEl = document.getElementById("publicKeyText");
+    if (!pubKeyEl) return;
+    const pubKey = pubKeyEl.textContent.trim();
     if (!pubKey) return showToast("请先生成密钥", "error");
 
     let body = { public_key: pubKey, platform };
@@ -178,12 +315,15 @@ async function deployOneClick() {
     const hostname = document.getElementById("setupHostname").value.trim();
     const user = document.getElementById("setupUser").value.trim();
     const password = document.getElementById("setupPassword").value.trim();
-    const pubKey = document.getElementById("publicKeyText").textContent.trim();
+    const pubKeyEl = document.getElementById("publicKeyText");
+    if (!pubKeyEl) return;
+    const pubKey = pubKeyEl.textContent.trim();
 
     if (!hostAlias || !hostname || !user) return showToast("请填写完整信息", "error");
     if (!pubKey) return showToast("请先生成密钥", "error");
 
     const btn = document.getElementById("btnSetupGo");
+    if (!btn) return;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>部署中...';
 
@@ -224,6 +364,7 @@ async function deployOneClick() {
 // ============ 已有密钥管理 ============
 async function loadExistingConfig() {
     const container = document.getElementById("existingKeysContent");
+    if (!container) return;
     container.innerHTML = '<span class="loading-text">⏳ 加载中...</span>';
 
     try {
@@ -332,7 +473,9 @@ async function deleteConfigHost(hostAlias) {
 
 // ============ 复制 ============
 function copyPublicKey() {
-    const txt = document.getElementById("publicKeyText").textContent;
+    const el = document.getElementById("publicKeyText");
+    if (!el) return;
+    const txt = el.textContent;
     navigator.clipboard.writeText(txt).then(() => showToast("已复制公钥", "success")).catch(() => showToast("复制失败", "error"));
 }
 
@@ -354,6 +497,108 @@ async function copyKeyFile(name, type) {
     }
 }
 
+// ============ 连接管理 ============
+async function loadConnections() {
+    const grid = document.getElementById("connectionsGrid");
+    if (!grid) return;
+    try {
+        const res = await fetch("/api/connections");
+        const data = await res.json();
+        if (!data.success || !data.connections || data.connections.length === 0) {
+            grid.innerHTML = `
+            <div class="empty-state" style="grid-column:1/-1;">
+                <div class="icon">📭</div>
+                <p>还没有保存任何连接</p>
+                <p style="font-size:0.8rem;">去<a href="/">首页</a>生成密钥并部署，或点下方「手动添加」</p>
+            </div>`;
+            return;
+        }
+        grid.innerHTML = data.connections.map(c => {
+            const keyValid = c.key_valid !== false;
+            const keyClass = c.identity_file ? (keyValid ? 'valid' : 'invalid') : '';
+            const keyText = c.identity_file
+                ? (keyValid ? '🔑 ' + esc(c.identity_file) : '密钥文件不存在: ' + esc(c.identity_file))
+                : '⚡ 无需额外配置';
+            return `
+            <div class="conn-card">
+                <div class="conn-alias"><code>${esc(c.alias)}</code></div>
+                <div class="conn-addr">${esc(c.user)}@${esc(c.hostname)}${c.port && c.port !== 22 ? ':' + c.port : ''}</div>
+                <div class="conn-key ${keyClass}">${keyText}</div>
+                <div class="conn-actions">
+                    <button class="btn conn-connect" onclick="connectServer('${esc(c.alias)}')" ${keyValid ? '' : 'disabled title="密钥文件不存在，请先生成并部署密钥"'}>${keyValid ? '🚀 一键连接' : '🔒 密钥缺失'}</button>
+                    <button class="btn conn-delete" onclick="deleteConn('${esc(c.id)}', '${esc(c.alias)}')" title="删除">🗑️</button>
+                </div>
+            </div>`;
+        }).join("");
+    } catch (e) {
+        grid.innerHTML = `<div style="grid-column:1/-1;color:var(--danger);text-align:center;">加载失败: ${esc(e.message)}</div>`;
+    }
+}
+
+async function connectServer(alias) {
+    showToast("正在启动终端...", "info");
+    try {
+        const res = await fetch("/api/connections/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alias }),
+        });
+        const data = await res.json();
+        showToast(data.message, data.success ? "success" : "error");
+    } catch (e) {
+        showToast("请求失败: " + e.message, "error");
+    }
+}
+
+function deleteConn(id, alias) {
+    showConfirm(
+        "确认删除连接？",
+        `将从连接管理中移除 "${alias}"，此操作不可撤销。\n（不会删除 ~/.ssh 中的密钥文件）`,
+        async () => {
+            try {
+                const res = await fetch(`/api/connections/${id}`, { method: "DELETE" });
+                const data = await res.json();
+                showToast(data.message, data.success ? "success" : "error");
+                loadConnections();
+            } catch (e) {
+                showToast("请求失败: " + e.message, "error");
+            }
+        }
+    );
+}
+
+async function saveConnection() {
+    const alias = document.getElementById("addAlias").value.trim();
+    const hostname = document.getElementById("addHostname").value.trim();
+    const user = document.getElementById("addUser").value.trim();
+    const port = parseInt(document.getElementById("addPort").value) || 22;
+    const idFile = document.getElementById("addIdFile").value.trim();
+
+    if (!alias || !hostname || !user) return showToast("请填写必填项", "error");
+
+    try {
+        const res = await fetch("/api/connections", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alias, hostname, user, port, identity_file: idFile }),
+        });
+        const data = await res.json();
+        showToast(data.message, data.success ? "success" : "error");
+        if (data.success) {
+            document.getElementById("addAlias").value = "";
+            document.getElementById("addHostname").value = "";
+            document.getElementById("addUser").value = "";
+            document.getElementById("addPort").value = "22";
+            document.getElementById("addIdFile").value = "";
+            const addSection = document.getElementById("addSection");
+            if (addSection) addSection.open = false;
+            loadConnections();
+        }
+    } catch (e) {
+        showToast("请求失败: " + e.message, "error");
+    }
+}
+
 // ============ 工具 ============
 function esc(s) {
     if (!s) return "";
@@ -364,3 +609,32 @@ function escHtml(s) {
     if (!s) return "";
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+
+// ============ 初始化 ============
+document.addEventListener("DOMContentLoaded", () => {
+    // Modal 事件绑定
+    const modal = document.getElementById("confirmModal");
+    const modalConfirmBtn = document.getElementById("modalConfirmBtn");
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+    if (modalConfirmBtn) {
+        modalConfirmBtn.addEventListener("click", () => {
+            if (modalCallback) modalCallback();
+            closeModal();
+        });
+    }
+
+    initThemeToggle();
+    initMenuSwitching();
+    initSSE();
+    loadExistingConfig();
+
+    // 连接页面自动加载
+    const isConnectionsPage = !document.querySelector('.nav-menu-item[data-panel]') && document.getElementById('connectionsGrid');
+    if (isConnectionsPage) {
+        loadConnections();
+    }
+});

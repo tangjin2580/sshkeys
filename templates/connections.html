@@ -8,8 +8,50 @@
     <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Nunito:200,300,400,600,700" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("app-theme");
+        if (theme === "dark" || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    })();
+    </script>
 </head>
 <body>
+    <!-- SVG 玻璃失真滤镜 -->
+    <svg style="display: none;">
+        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%" filterUnits="objectBoundingBox">
+            <feTurbulence type="fractalNoise" baseFrequency="0.001 0.005" numOctaves="1" seed="17" result="turbulence" />
+            <feComponentTransfer in="turbulence" result="mapped">
+                <feFuncR type="gamma" amplitude="1" exponent="10" offset="0.5" />
+                <feFuncG type="gamma" amplitude="0" exponent="1" offset="0" />
+                <feFuncB type="gamma" amplitude="0" exponent="1" offset="0.5" />
+            </feComponentTransfer>
+            <feGaussianBlur in="turbulence" stdDeviation="3" result="softMap" />
+            <feSpecularLighting in="softMap" surfaceScale="5" specularConstant="1" specularExponent="100" lightingColor="white" result="specLight">
+                <fePointLight x="-200" y="-200" z="300" />
+            </feSpecularLighting>
+            <feComposite in="specLight" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litImage" />
+            <feDisplacementMap in="SourceGraphic" in2="softMap" scale="200" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+    </svg>
+
+    <!-- 星空背景 -->
+    <div class="starfield"></div>
+    <!-- 白云背景（白天模式可见） -->
+    <div class="cloudfield"></div>
+    <!-- 海滩海浪（白天模式可见） -->
+    <div class="beach">
+        <div class="wave wave--1"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--4"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <!-- 圆形 Wipe 过渡遮罩 -->
+    <div class="theme-wipe" id="themeWipe"></div>
+
     <!-- 确认弹窗 -->
     <div class="modal-overlay" id="confirmModal" style="display:none;">
         <div class="modal-card">
@@ -23,200 +65,96 @@
         </div>
     </div>
 
-    <div class="container">
-        <!-- 导航 -->
-        <div class="nav-bar">
-            <a href="/" class="nav-back">← 返回首页</a>
-            <span class="nav-title">🔗 我的连接</span>
-            <span></span>
-        </div>
+    <div class="app-layout">
 
-        <!-- 连接卡片网格 -->
-        <div id="connectionsGrid" class="connections-grid">
-            <div style="grid-column:1/-1;color:var(--muted);text-align:center;padding:20px;">⏳ 加载中...</div>
-        </div>
+        <!-- 左侧竖排标题 -->
+        <aside class="app-sidebar">
+            <h1 class="sidebar-title">SSH Key Manager</h1>
+            <p class="sidebar-subtitle">我的连接</p>
+        </aside>
 
-        <!-- 手动添加连接 -->
-        <details class="add-section" id="addSection">
-            <summary>➕ 手动添加连接</summary>
-            <div class="add-form">
-                <div class="form-row">
-                    <div class="form-group flex-1">
-                        <label for="addAlias">Host 别名</label>
-                        <input type="text" id="addAlias" class="form-input" placeholder="myserver">
-                    </div>
-                    <div class="form-group flex-1">
-                        <label for="addHostname">服务器地址</label>
-                        <input type="text" id="addHostname" class="form-input" placeholder="192.168.1.100">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group flex-1">
-                        <label for="addUser">SSH 用户名</label>
-                        <input type="text" id="addUser" class="form-input" placeholder="root">
-                    </div>
-                    <div class="form-group" style="width:90px;">
-                        <label for="addPort">端口</label>
-                        <input type="number" id="addPort" class="form-input" value="22">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="addIdFile">IdentityFile（可选）</label>
-                    <input type="text" id="addIdFile" class="form-input" placeholder="留空则使用已有配置 ~/.ssh/id_ed25519">
-                </div>
-                <button class="btn btn-primary" onclick="saveConnection()">💾 保存连接</button>
+        <!-- 顶部毛玻璃菜单栏 -->
+        <nav class="app-nav">
+            <div class="nav-glass-distortion"></div>
+            <div class="nav-glass-base"></div>
+            <div class="nav-glass-border"></div>
+            <div class="nav-glass-content">
+                <ul class="nav-menu">
+                    <li><a href="/" class="nav-menu-item">🔑 生成新密钥</a></li>
+                    <li><a href="/" class="nav-menu-item">⚙️ 密钥管理</a></li>
+                    <li><a href="/connections" class="nav-menu-item active">🔗 我的连接</a></li>
+                </ul>
             </div>
-        </details>
+        </nav>
+
+        <!-- 右上角主题切换按钮 -->
+        <div class="nav-toggle-wrap">
+            <button class="theme-toggle" id="theme-toggle-btn" role="switch" aria-checked="false" aria-label="Switch to dark theme">
+                <div class="theme-toggle__container">
+                    <div class="theme-toggle__clouds"></div>
+                    <div class="theme-toggle__stars">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 55" fill="none">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M135.831 3.00688C135.055 3.85027 134.111 4.29946 133 4.35447C134.111 4.40947 135.055 4.85867 135.831 5.71123C136.607 6.55462 136.996 7.56303 136.996 8.72727C136.996 7.95722 137.172 7.25134 137.525 6.59129C137.886 5.93124 138.372 5.39954 138.98 5.00535C139.598 4.60199 140.268 4.39114 141 4.35447C139.88 4.2903 138.936 3.85027 138.16 3.00688C137.384 2.16348 136.996 1.16425 136.996 0C136.996 1.16425 136.607 2.16348 135.831 3.00688ZM31 23.3545C32.1114 23.2995 33.0551 22.8503 33.8313 22.0069C34.6075 21.1635 34.9956 20.1642 34.9956 19C34.9956 20.1642 35.3837 21.1635 36.1599 22.0069C36.9361 22.8503 37.8798 23.2903 39 23.3545C38.2679 23.3911 37.5976 23.602 36.9802 24.0053C36.3716 24.3995 35.8864 24.9312 35.5248 25.5913C35.172 26.2513 34.9956 26.9572 34.9956 27.7273C34.9956 26.563 34.6075 25.5546 33.8313 24.7112C33.0551 23.8587 32.1114 23.4095 31 23.3545ZM0 36.3545C1.11136 36.2995 2.05513 35.8503 2.83131 35.0069C3.6075 34.1635 3.99559 33.1642 3.99559 32C3.99559 33.1642 4.38368 34.1635 5.15987 35.0069C5.93605 35.8503 6.87982 36.2903 8 36.3545C7.26792 36.3911 6.59757 36.602 5.98015 37.0053C5.37155 37.3995 4.88644 37.9312 4.52481 38.5913C4.172 39.2513 3.99559 39.9572 3.99559 40.7273C3.99559 39.563 3.6075 38.5546 2.83131 37.7112C2.05513 36.8587 1.11136 36.4095 0 36.3545ZM56.8313 24.0069C56.0551 24.8503 55.1114 25.2995 54 25.3545C55.1114 25.4095 56.0551 25.8587 56.8313 26.7112C57.6075 27.5546 57.9956 28.563 57.9956 29.7273C57.9956 28.9572 58.172 28.2513 58.5248 27.5913C58.8864 26.9312 59.3716 26.3995 59.9802 26.0053C60.5976 25.602 61.2679 25.3911 62 25.3545C60.8798 25.2903 59.9361 24.8503 59.1599 24.0069C58.3837 23.1635 57.9956 22.1642 57.9956 21C57.9956 22.1642 57.6075 23.1635 56.8313 24.0069ZM81 25.3545C82.1114 25.2995 83.0551 24.8503 83.8313 24.0069C84.6075 23.1635 84.9956 22.1642 84.9956 21C84.9956 22.1642 85.3837 23.1635 86.1599 24.0069C86.9361 24.8503 87.8798 25.2903 89 25.3545C88.2679 25.3911 87.5976 25.602 86.9802 26.0053C86.3716 26.3995 85.8864 26.9312 85.5248 27.5913C85.172 28.2513 84.9956 28.9572 84.9956 29.7273C84.9956 28.563 84.6075 27.5546 83.8313 26.7112C83.0551 25.8587 82.1114 25.4095 81 25.3545ZM136 36.3545C137.111 36.2995 138.055 35.8503 138.831 35.0069C139.607 34.1635 139.996 33.1642 139.996 32C139.996 33.1642 140.384 34.1635 141.16 35.0069C141.936 35.8503 142.88 36.2903 144 36.3545C143.268 36.3911 142.598 36.602 141.98 37.0053C141.372 37.3995 140.886 37.9312 140.525 38.5913C140.172 39.2513 139.996 39.9572 139.996 40.7273C139.996 39.563 139.607 38.5546 138.831 37.7112C138.055 36.8587 137.111 36.4095 136 36.3545ZM101.831 49.0069C101.055 49.8503 100.111 50.2995 99 50.3545C100.111 50.4095 101.055 50.8587 101.831 51.7112C102.607 52.5546 102.996 53.563 102.996 54.7273C102.996 53.9572 103.172 53.2513 103.525 52.5913C103.886 51.9312 104.372 51.3995 104.98 51.0053C105.598 50.602 106.268 50.3911 107 50.3545C105.88 50.2903 104.936 49.8503 104.16 49.0069C103.384 48.1635 102.996 47.1642 102.996 46C102.996 47.1642 102.607 48.1635 101.831 49.0069Z" fill="currentColor"></path>
+                        </svg>
+                    </div>
+                    <div class="theme-toggle__sun">
+                        <div class="theme-toggle__moon-mask">
+                            <div class="theme-toggle__crater"></div>
+                            <div class="theme-toggle__crater"></div>
+                            <div class="theme-toggle__crater"></div>
+                        </div>
+                    </div>
+                </div>
+            </button>
+        </div>
+
+        <!-- 主内容区 -->
+        <main class="app-main">
+            <!-- 连接卡片网格 -->
+            <div id="connectionsGrid" class="connections-grid">
+                <div style="grid-column:1/-1;text-align:center;padding:20px;">
+                    <span class="loading-text">⏳ 加载中...</span>
+                </div>
+            </div>
+
+            <!-- 手动添加连接 -->
+            <details class="add-section" id="addSection">
+                <summary>➕ 手动添加连接</summary>
+                <div class="add-form">
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="addAlias">Host 别名</label>
+                            <input type="text" id="addAlias" class="form-input" placeholder="myserver">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="addHostname">服务器地址</label>
+                            <input type="text" id="addHostname" class="form-input" placeholder="192.168.1.100">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="addUser">SSH 用户名</label>
+                            <input type="text" id="addUser" class="form-input" placeholder="root">
+                        </div>
+                        <div class="form-group" style="width:90px;">
+                            <label for="addPort">端口</label>
+                            <input type="number" id="addPort" class="form-input" value="22">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="addIdFile">IdentityFile（可选）</label>
+                        <input type="text" id="addIdFile" class="form-input" placeholder="留空则使用已有配置 ~/.ssh/id_ed25519">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveConnection()">💾 保存连接</button>
+                </div>
+            </details>
+        </main>
     </div>
 
     <footer class="footer">
         <span>SSH Key Manager · 一键免密登录</span>
     </footer>
 
-    <script>
-        // ============ 弹窗 ============
-        let modalCallback = null;
-        function showConfirm(title, body, cb) {
-            document.getElementById("modalTitle").textContent = title;
-            document.getElementById("modalBody").textContent = body;
-            document.getElementById("confirmModal").style.display = "flex";
-            modalCallback = cb;
-            document.getElementById("modalConfirmBtn").focus();
-        }
-        function closeModal() {
-            document.getElementById("confirmModal").style.display = "none";
-            modalCallback = null;
-        }
-        document.getElementById("confirmModal").addEventListener("click", e => {
-            if (e.target === document.getElementById("confirmModal")) closeModal();
-        });
-        document.addEventListener("keydown", e => {
-            if (e.key === "Escape") closeModal();
-        });
-        document.getElementById("modalConfirmBtn").addEventListener("click", () => {
-            if (modalCallback) modalCallback();
-            closeModal();
-        });
-
-        // ============ Toast ============
-        function showToast(msg, type) {
-            const t = document.createElement("div");
-            t.className = `toast toast-${type || "info"}`;
-            t.textContent = msg;
-            document.body.appendChild(t);
-            setTimeout(() => t.remove(), 3000);
-        }
-
-        // ============ 加载连接列表 ============
-        async function loadConnections() {
-            const grid = document.getElementById("connectionsGrid");
-            try {
-                const res = await fetch("/api/connections");
-                const data = await res.json();
-                if (!data.success || !data.connections || data.connections.length === 0) {
-                    grid.innerHTML = `
-                    <div class="empty-state" style="grid-column:1/-1;">
-                        <div class="icon">📭</div>
-                        <p>还没有保存任何连接</p>
-                        <p style="font-size:0.8rem;">去<a href="/">首页</a>生成密钥并部署，或点下方「手动添加」</p>
-                    </div>`;
-                    return;
-                }
-                grid.innerHTML = data.connections.map(c => {
-                    const keyValid = c.key_valid !== false;
-                    const keyClass = c.identity_file ? (keyValid ? 'valid' : 'invalid') : '';
-                    const keyText = c.identity_file
-                        ? (keyValid ? '🔑 ' + esc(c.identity_file) : '密钥文件不存在: ' + esc(c.identity_file))
-                        : '⚡ 无需额外配置';
-                    return `
-                <div class="conn-card">
-                    <div class="conn-alias"><code>${esc(c.alias)}</code></div>
-                    <div class="conn-addr">${esc(c.user)}@${esc(c.hostname)}${c.port && c.port !== 22 ? ':' + c.port : ''}</div>
-                    <div class="conn-key ${keyClass}">${keyText}</div>
-                    <div class="conn-actions">
-                        <button class="btn conn-connect" onclick="connectServer('${esc(c.alias)}')" ${keyValid ? '' : 'disabled title="密钥文件不存在，请先生成并部署密钥"'}>${keyValid ? '🚀 一键连接' : '🔒 密钥缺失'}</button>
-                        <button class="btn conn-delete" onclick="deleteConn('${esc(c.id)}', '${esc(c.alias)}')" title="删除">🗑️</button>
-                    </div>
-                </div>`}).join("");
-            } catch (e) {
-                grid.innerHTML = `<div style="grid-column:1/-1;color:var(--danger);text-align:center;">加载失败: ${esc(e.message)}</div>`;
-            }
-        }
-
-        // ============ 一键连接 ============
-        async function connectServer(alias) {
-            showToast("正在启动终端...", "info");
-            try {
-                const res = await fetch("/api/connections/connect", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ alias }),
-                });
-                const data = await res.json();
-                showToast(data.message, data.success ? "success" : "error");
-            } catch (e) {
-                showToast("请求失败: " + e.message, "error");
-            }
-        }
-
-        // ============ 删除连接 ============
-        function deleteConn(id, alias) {
-            showConfirm(
-                "确认删除连接？",
-                `将从连接管理中移除 "${alias}"，此操作不可撤销。\n（不会删除 ~/.ssh 中的密钥文件）`,
-                async () => {
-                    try {
-                        const res = await fetch(`/api/connections/${id}`, { method: "DELETE" });
-                        const data = await res.json();
-                        showToast(data.message, data.success ? "success" : "error");
-                        loadConnections();
-                    } catch (e) {
-                        showToast("请求失败: " + e.message, "error");
-                    }
-                }
-            );
-        }
-
-        // ============ 手动保存 ============
-        async function saveConnection() {
-            const alias = document.getElementById("addAlias").value.trim();
-            const hostname = document.getElementById("addHostname").value.trim();
-            const user = document.getElementById("addUser").value.trim();
-            const port = parseInt(document.getElementById("addPort").value) || 22;
-            const idFile = document.getElementById("addIdFile").value.trim();
-
-            if (!alias || !hostname || !user) return showToast("请填写必填项", "error");
-
-            try {
-                const res = await fetch("/api/connections", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ alias, hostname, user, port, identity_file: idFile }),
-                });
-                const data = await res.json();
-                showToast(data.message, data.success ? "success" : "error");
-                if (data.success) {
-                    document.getElementById("addAlias").value = "";
-                    document.getElementById("addHostname").value = "";
-                    document.getElementById("addUser").value = "";
-                    document.getElementById("addPort").value = "22";
-                    document.getElementById("addIdFile").value = "";
-                    document.getElementById("addSection").open = false;
-                    loadConnections();
-                }
-            } catch (e) {
-                showToast("请求失败: " + e.message, "error");
-            }
-        }
-
-        // ============ 工具 ============
-        function esc(s) {
-            if (!s) return "";
-            return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-
-        // ============ 初始化 ============
-        loadConnections();
-    </script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

@@ -8,8 +8,53 @@
     <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Nunito:200,300,400,600,700" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("app-theme");
+        if (theme === "dark" || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    })();
+    </script>
 </head>
 <body>
+    <!-- SVG 玻璃失真滤镜 -->
+    <svg style="display: none;">
+        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%" filterUnits="objectBoundingBox">
+            <feTurbulence type="fractalNoise" baseFrequency="0.001 0.005" numOctaves="1" seed="17" result="turbulence" />
+            <feComponentTransfer in="turbulence" result="mapped">
+                <feFuncR type="gamma" amplitude="1" exponent="10" offset="0.5" />
+                <feFuncG type="gamma" amplitude="0" exponent="1" offset="0" />
+                <feFuncB type="gamma" amplitude="0" exponent="1" offset="0.5" />
+            </feComponentTransfer>
+            <feGaussianBlur in="turbulence" stdDeviation="3" result="softMap" />
+            <feSpecularLighting in="softMap" surfaceScale="5" specularConstant="1" specularExponent="100" lightingColor="white" result="specLight">
+                <fePointLight x="-200" y="-200" z="300" />
+            </feSpecularLighting>
+            <feComposite in="specLight" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litImage" />
+            <feDisplacementMap in="SourceGraphic" in2="softMap" scale="200" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+    </svg>
+
+    <!-- 星空背景（黑夜模式可见） -->
+    <div class="starfield"></div>
+
+    <!-- 白云背景（白天模式可见） -->
+    <div class="cloudfield"></div>
+
+    <!-- 海滩海浪（白天模式可见） -->
+    <div class="beach">
+        <div class="wave wave--1"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--3"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wave wave--4"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+
+    <!-- 圆形 Wipe 过渡遮罩 -->
+    <div class="theme-wipe" id="themeWipe"></div>
+
     <!-- 确认弹窗 -->
     <div class="modal-overlay" id="confirmModal" style="display:none;">
         <div class="modal-card">
@@ -23,175 +68,229 @@
         </div>
     </div>
 
-    <div class="container">
-        <!-- 头部 -->
-        <header class="header">
-            <h1><span class="gradient">🔑 SSH Key Manager</span></h1>
-            <p class="subtitle">可视化生成 · 一键上传 · 免密登录 · 跨平台支持</p>
-            <nav style="margin-top:10px;">
-                <a href="/connections" class="nav-link">🔗 我的连接 →</a>
-            </nav>
-        </header>
+    <!-- ============================================================
+    整体布局：侧边栏 + 导航栏 + 主内容区
+    ============================================================ -->
+    <div class="app-layout">
 
-        <!-- 双栏布局 -->
-        <div class="main-grid">
-            <!-- ===== 左栏 ===== -->
-            <div class="col-left">
-                <!-- 密钥配置区 -->
-                <section class="card config-section">
-                    <h2 class="section-title">⚙️ 生成新密钥</h2>
-                    <div class="form-group">
-                        <label for="keyType">密钥类型</label>
-                        <select id="keyType" class="form-select">
-                            <optgroup label="── Edwards 曲线（推荐）──">
-                                <option value="ed25519" data-size="256">Ed25519（推荐）</option>
-                            </optgroup>
-                            <optgroup label="── ECDSA ──">
-                                <option value="ecdsa" data-size="256" data-curve="secp256r1">ECDSA P-256</option>
-                                <option value="ecdsa" data-size="384" data-curve="secp384r1">ECDSA P-384</option>
-                                <option value="ecdsa" data-size="521" data-curve="secp521r1">ECDSA P-521</option>
-                            </optgroup>
-                            <optgroup label="── RSA ──">
-                                <option value="rsa" data-size="1024">RSA 1024（旧版兼容）</option>
-                                <option value="rsa" data-size="2048">RSA 2048</option>
-                                <option value="rsa" data-size="3072">RSA 3072</option>
-                                <option value="rsa" data-size="4096">RSA 4096</option>
-                                <option value="rsa" data-size="8192">RSA 8192</option>
-                            </optgroup>
-                            <optgroup label="── DSA（已弃用）──">
-                                <option value="dsa" data-size="1024">DSA 1024（仅旧系统兼容）</option>
-                            </optgroup>
-                        </select>
+        <!-- 左侧竖排标题 -->
+        <aside class="app-sidebar">
+            <h1 class="sidebar-title">SSH Key Manager</h1>
+            <p class="sidebar-subtitle">密钥管理</p>
+        </aside>
+
+        <!-- 顶部毛玻璃菜单栏 -->
+        <nav class="app-nav">
+            <div class="nav-glass-distortion"></div>
+            <div class="nav-glass-base"></div>
+            <div class="nav-glass-border"></div>
+            <div class="nav-glass-content">
+                <ul class="nav-menu">
+                    <li><button class="nav-menu-item active" data-panel="panel-generate">🔑 生成新密钥</button></li>
+                    <li><button class="nav-menu-item" data-panel="panel-manage">⚙️ 密钥管理</button></li>
+                    <li><button class="nav-menu-item" data-panel="panel-connections">🔗 我的连接</button></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- 右上角主题切换按钮 -->
+        <div class="nav-toggle-wrap">
+            <button class="theme-toggle" id="theme-toggle-btn" role="switch" aria-checked="false" aria-label="Switch to dark theme">
+                <div class="theme-toggle__container">
+                    <div class="theme-toggle__clouds"></div>
+                    <div class="theme-toggle__stars">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 55" fill="none">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M135.831 3.00688C135.055 3.85027 134.111 4.29946 133 4.35447C134.111 4.40947 135.055 4.85867 135.831 5.71123C136.607 6.55462 136.996 7.56303 136.996 8.72727C136.996 7.95722 137.172 7.25134 137.525 6.59129C137.886 5.93124 138.372 5.39954 138.98 5.00535C139.598 4.60199 140.268 4.39114 141 4.35447C139.88 4.2903 138.936 3.85027 138.16 3.00688C137.384 2.16348 136.996 1.16425 136.996 0C136.996 1.16425 136.607 2.16348 135.831 3.00688ZM31 23.3545C32.1114 23.2995 33.0551 22.8503 33.8313 22.0069C34.6075 21.1635 34.9956 20.1642 34.9956 19C34.9956 20.1642 35.3837 21.1635 36.1599 22.0069C36.9361 22.8503 37.8798 23.2903 39 23.3545C38.2679 23.3911 37.5976 23.602 36.9802 24.0053C36.3716 24.3995 35.8864 24.9312 35.5248 25.5913C35.172 26.2513 34.9956 26.9572 34.9956 27.7273C34.9956 26.563 34.6075 25.5546 33.8313 24.7112C33.0551 23.8587 32.1114 23.4095 31 23.3545ZM0 36.3545C1.11136 36.2995 2.05513 35.8503 2.83131 35.0069C3.6075 34.1635 3.99559 33.1642 3.99559 32C3.99559 33.1642 4.38368 34.1635 5.15987 35.0069C5.93605 35.8503 6.87982 36.2903 8 36.3545C7.26792 36.3911 6.59757 36.602 5.98015 37.0053C5.37155 37.3995 4.88644 37.9312 4.52481 38.5913C4.172 39.2513 3.99559 39.9572 3.99559 40.7273C3.99559 39.563 3.6075 38.5546 2.83131 37.7112C2.05513 36.8587 1.11136 36.4095 0 36.3545ZM56.8313 24.0069C56.0551 24.8503 55.1114 25.2995 54 25.3545C55.1114 25.4095 56.0551 25.8587 56.8313 26.7112C57.6075 27.5546 57.9956 28.563 57.9956 29.7273C57.9956 28.9572 58.172 28.2513 58.5248 27.5913C58.8864 26.9312 59.3716 26.3995 59.9802 26.0053C60.5976 25.602 61.2679 25.3911 62 25.3545C60.8798 25.2903 59.9361 24.8503 59.1599 24.0069C58.3837 23.1635 57.9956 22.1642 57.9956 21C57.9956 22.1642 57.6075 23.1635 56.8313 24.0069ZM81 25.3545C82.1114 25.2995 83.0551 24.8503 83.8313 24.0069C84.6075 23.1635 84.9956 22.1642 84.9956 21C84.9956 22.1642 85.3837 23.1635 86.1599 24.0069C86.9361 24.8503 87.8798 25.2903 89 25.3545C88.2679 25.3911 87.5976 25.602 86.9802 26.0053C86.3716 26.3995 85.8864 26.9312 85.5248 27.5913C85.172 28.2513 84.9956 28.9572 84.9956 29.7273C84.9956 28.563 84.6075 27.5546 83.8313 26.7112C83.0551 25.8587 82.1114 25.4095 81 25.3545ZM136 36.3545C137.111 36.2995 138.055 35.8503 138.831 35.0069C139.607 34.1635 139.996 33.1642 139.996 32C139.996 33.1642 140.384 34.1635 141.16 35.0069C141.936 35.8503 142.88 36.2903 144 36.3545C143.268 36.3911 142.598 36.602 141.98 37.0053C141.372 37.3995 140.886 37.9312 140.525 38.5913C140.172 39.2513 139.996 39.9572 139.996 40.7273C139.996 39.563 139.607 38.5546 138.831 37.7112C138.055 36.8587 137.111 36.4095 136 36.3545ZM101.831 49.0069C101.055 49.8503 100.111 50.2995 99 50.3545C100.111 50.4095 101.055 50.8587 101.831 51.7112C102.607 52.5546 102.996 53.563 102.996 54.7273C102.996 53.9572 103.172 53.2513 103.525 52.5913C103.886 51.9312 104.372 51.3995 104.98 51.0053C105.598 50.602 106.268 50.3911 107 50.3545C105.88 50.2903 104.936 49.8503 104.16 49.0069C103.384 48.1635 102.996 47.1642 102.996 46C102.996 47.1642 102.607 48.1635 101.831 49.0069Z" fill="currentColor"></path>
+                        </svg>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="comment">注释 / 邮箱</label>
-                            <input type="text" id="comment" class="form-input" placeholder="user@example.com">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="passphrase">私钥密码（可选）</label>
-                            <input type="password" id="passphrase" class="form-input" placeholder="留空则不加密">
+                    <div class="theme-toggle__sun">
+                        <div class="theme-toggle__moon-mask">
+                            <div class="theme-toggle__crater"></div>
+                            <div class="theme-toggle__crater"></div>
+                            <div class="theme-toggle__crater"></div>
                         </div>
                     </div>
-                    <button id="btnGenerate" class="btn btn-primary btn-lg" onclick="generateKey()">
-                        ⚡ 一键生成密钥
-                    </button>
-                </section>
+                </div>
+            </button>
+        </div>
 
-                <!-- 公钥展示区 -->
-                <section class="card key-display-section" id="keyDisplaySection" style="display:none;">
-                    <h2 class="section-title">📋 生成的公钥</h2>
-                    <div class="key-info" id="keyInfo"></div>
-                    <div class="key-box">
-                        <code id="publicKeyText" class="key-text"></code>
+        <!-- ============================================================
+        主内容区
+        ============================================================ -->
+        <main class="app-main">
+
+            <!-- ===== Panel 1: 生成新密钥 ===== -->
+            <div class="content-panel active" id="panel-generate">
+                <div class="main-grid">
+                    <!-- 左栏 -->
+                    <div class="col-left">
+                        <!-- 密钥配置区 -->
+                        <section class="card config-section">
+                            <h2 class="section-title">⚙️ 生成新密钥</h2>
+                            <div class="form-group">
+                                <label for="keyType">密钥类型</label>
+                                <select id="keyType" class="form-select">
+                                    <optgroup label="── Edwards 曲线（推荐）──">
+                                        <option value="ed25519" data-size="256">Ed25519（推荐）</option>
+                                    </optgroup>
+                                    <optgroup label="── ECDSA ──">
+                                        <option value="ecdsa" data-size="256" data-curve="secp256r1">ECDSA P-256</option>
+                                        <option value="ecdsa" data-size="384" data-curve="secp384r1">ECDSA P-384</option>
+                                        <option value="ecdsa" data-size="521" data-curve="secp521r1">ECDSA P-521</option>
+                                    </optgroup>
+                                    <optgroup label="── RSA ──">
+                                        <option value="rsa" data-size="1024">RSA 1024（旧版兼容）</option>
+                                        <option value="rsa" data-size="2048">RSA 2048</option>
+                                        <option value="rsa" data-size="3072">RSA 3072</option>
+                                        <option value="rsa" data-size="4096">RSA 4096</option>
+                                        <option value="rsa" data-size="8192">RSA 8192</option>
+                                    </optgroup>
+                                    <optgroup label="── DSA（已弃用）──">
+                                        <option value="dsa" data-size="1024">DSA 1024（仅旧系统兼容）</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="comment">注释 / 邮箱</label>
+                                    <input type="text" id="comment" class="form-input" placeholder="user@example.com">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="passphrase">私钥密码（可选）</label>
+                                    <input type="password" id="passphrase" class="form-input" placeholder="留空则不加密">
+                                </div>
+                            </div>
+                            <button id="btnGenerate" class="btn btn-primary btn-lg" onclick="generateKey()">
+                                ⚡ 一键生成密钥
+                            </button>
+                        </section>
+
+                        <!-- 公钥展示区 -->
+                        <section class="card key-display-section" id="keyDisplaySection" style="display:none;">
+                            <h2 class="section-title">📋 生成的公钥</h2>
+                            <div class="key-info" id="keyInfo"></div>
+                            <div class="key-box">
+                                <code id="publicKeyText" class="key-text"></code>
+                            </div>
+                            <div class="key-actions">
+                                <button class="btn btn-outline" onclick="copyPublicKey()">📋 复制</button>
+                                <button class="btn btn-outline" onclick="downloadPrivateKey()">💾 下载私钥</button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="key-actions">
-                        <button class="btn btn-outline" onclick="copyPublicKey()">📋 复制</button>
-                        <button class="btn btn-outline" onclick="downloadPrivateKey()">💾 下载私钥</button>
+
+                    <!-- 右栏 -->
+                    <div class="col-right">
+                        <!-- 上传 + 部署区 -->
+                        <section class="card upload-section" id="uploadSection" style="display:none;">
+                            <h2 class="section-title">📤 上传与部署</h2>
+                            <div class="tabs">
+                                <button class="tab active" onclick="switchTab('server')">🖥️ 远程服务器</button>
+                                <button class="tab" onclick="switchTab('github')">🐙 GitHub</button>
+                                <button class="tab" onclick="switchTab('gitlab')">🦊 GitLab</button>
+                            </div>
+
+                            <!-- 远程服务器面板 -->
+                            <div class="tab-panel active" id="panel-server">
+                                <div class="form-row">
+                                    <div class="form-group flex-1">
+                                        <label for="serverHost">服务器地址</label>
+                                        <input type="text" id="serverHost" class="form-input" placeholder="192.168.1.100">
+                                    </div>
+                                    <div class="form-group" style="width:80px;">
+                                        <label for="serverPort">端口</label>
+                                        <input type="number" id="serverPort" class="form-input" value="22">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group flex-1">
+                                        <label for="serverUser">SSH 用户名</label>
+                                        <input type="text" id="serverUser" class="form-input" placeholder="root">
+                                    </div>
+                                    <div class="form-group flex-1">
+                                        <label for="serverPassword">SSH 密码（上传用）</label>
+                                        <input type="password" id="serverPassword" class="form-input" placeholder="留空使用默认密钥">
+                                    </div>
+                                </div>
+                                <button class="btn btn-success btn-block" onclick="uploadKey('server')">🖥️ 仅上传公钥</button>
+                            </div>
+
+                            <!-- GitHub 面板 -->
+                            <div class="tab-panel" id="panel-github">
+                                <div class="form-group">
+                                    <label for="githubToken">Personal Access Token</label>
+                                    <input type="password" id="githubToken" class="form-input" placeholder="ghp_xxxxxxxxxxxx">
+                                    <small>需要 <code>admin:public_key</code> → <a href="https://github.com/settings/tokens" target="_blank">创建 Token</a></small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="githubTitle">密钥标题</label>
+                                    <input type="text" id="githubTitle" class="form-input" value="SSH Key Manager">
+                                </div>
+                                <button class="btn btn-success btn-block" onclick="uploadKey('github')">🐙 上传到 GitHub</button>
+                            </div>
+
+                            <!-- GitLab 面板 -->
+                            <div class="tab-panel" id="panel-gitlab">
+                                <div class="form-group">
+                                    <label for="gitlabUrl">实例地址</label>
+                                    <input type="text" id="gitlabUrl" class="form-input" value="https://gitlab.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="gitlabToken">Personal Access Token</label>
+                                    <input type="password" id="gitlabToken" class="form-input" placeholder="glpat-xxxxxxxxxxxx">
+                                    <small>需要 <code>api</code> → <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank">创建 Token</a></small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="gitlabTitle">密钥标题</label>
+                                    <input type="text" id="gitlabTitle" class="form-input" value="SSH Key Manager">
+                                </div>
+                                <button class="btn btn-success btn-block" onclick="uploadKey('gitlab')">🦊 上传到 GitLab</button>
+                            </div>
+                        </section>
+
+                        <!-- 免密登录一键部署 -->
+                        <section class="card setup-section" id="setupSection" style="display:none;">
+                            <h2 class="section-title">🚀 一键部署免密登录</h2>
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="hostAlias">Host 别名</label>
+                                    <input type="text" id="hostAlias" class="form-input" placeholder="myserver">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="setupHostname">服务器地址</label>
+                                    <input type="text" id="setupHostname" class="form-input" placeholder="192.168.1.100">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="setupUser">SSH 用户名</label>
+                                <input type="text" id="setupUser" class="form-input" placeholder="root">
+                            </div>
+                            <div class="form-group">
+                                <label for="setupPassword">服务器密码（填写则自动上传公钥）</label>
+                                <input type="password" id="setupPassword" class="form-input" placeholder="留空则不上传">
+                            </div>
+                            <button class="btn btn-primary btn-lg" id="btnSetupGo" onclick="deployOneClick()">
+                                🚀 部署免密登录
+                            </button>
+                            <small style="display:block;margin-top:10px;color:var(--text-muted);text-align:center;">
+                                自动：保存私钥 → 写入 config → 上传公钥<br>
+                                之后 <code>ssh myserver</code> 或 <code>ssh IP</code> 均可免密
+                            </small>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- 实时日志（全宽） -->
+                <section class="card log-section" id="logSection" style="display:none;">
+                    <h2 class="section-title">📜 操作日志</h2>
+                    <div class="log-box" id="logBox">
+                        <div class="log-entry log-info">等待操作...</div>
                     </div>
                 </section>
             </div>
 
-            <!-- ===== 右栏 ===== -->
-            <div class="col-right">
-                <!-- 上传 + 部署区 -->
-                <section class="card upload-section" id="uploadSection" style="display:none;">
-                    <h2 class="section-title">📤 上传与部署</h2>
-                    <div class="tabs">
-                        <button class="tab active" onclick="switchTab('server')">🖥️ 远程服务器</button>
-                        <button class="tab" onclick="switchTab('github')">🐙 GitHub</button>
-                        <button class="tab" onclick="switchTab('gitlab')">🦊 GitLab</button>
-                    </div>
-
-                    <!-- 远程服务器面板 -->
-                    <div class="tab-panel active" id="panel-server">
-                        <div class="form-row">
-                            <div class="form-group flex-1">
-                                <label for="serverHost">服务器地址</label>
-                                <input type="text" id="serverHost" class="form-input" placeholder="192.168.1.100">
-                            </div>
-                            <div class="form-group" style="width:80px;">
-                                <label for="serverPort">端口</label>
-                                <input type="number" id="serverPort" class="form-input" value="22">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group flex-1">
-                                <label for="serverUser">SSH 用户名</label>
-                                <input type="text" id="serverUser" class="form-input" placeholder="root">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label for="serverPassword">SSH 密码（上传用）</label>
-                                <input type="password" id="serverPassword" class="form-input" placeholder="留空使用默认密钥">
-                            </div>
-                        </div>
-                        <button class="btn btn-success btn-block" onclick="uploadKey('server')">🖥️ 仅上传公钥</button>
-                    </div>
-
-                    <!-- GitHub 面板 -->
-                    <div class="tab-panel" id="panel-github">
-                        <div class="form-group">
-                            <label for="githubToken">Personal Access Token</label>
-                            <input type="password" id="githubToken" class="form-input" placeholder="ghp_xxxxxxxxxxxx">
-                            <small>需要 <code>admin:public_key</code> → <a href="https://github.com/settings/tokens" target="_blank">创建 Token</a></small>
-                        </div>
-                        <div class="form-group">
-                            <label for="githubTitle">密钥标题</label>
-                            <input type="text" id="githubTitle" class="form-input" value="SSH Key Manager">
-                        </div>
-                        <button class="btn btn-success btn-block" onclick="uploadKey('github')">🐙 上传到 GitHub</button>
-                    </div>
-
-                    <!-- GitLab 面板 -->
-                    <div class="tab-panel" id="panel-gitlab">
-                        <div class="form-group">
-                            <label for="gitlabUrl">实例地址</label>
-                            <input type="text" id="gitlabUrl" class="form-input" value="https://gitlab.com">
-                        </div>
-                        <div class="form-group">
-                            <label for="gitlabToken">Personal Access Token</label>
-                            <input type="password" id="gitlabToken" class="form-input" placeholder="glpat-xxxxxxxxxxxx">
-                            <small>需要 <code>api</code> → <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank">创建 Token</a></small>
-                        </div>
-                        <div class="form-group">
-                            <label for="gitlabTitle">密钥标题</label>
-                            <input type="text" id="gitlabTitle" class="form-input" value="SSH Key Manager">
-                        </div>
-                        <button class="btn btn-success btn-block" onclick="uploadKey('gitlab')">🦊 上传到 GitLab</button>
-                    </div>
-                </section>
-
-                <!-- 免密登录一键部署 -->
-                <section class="card setup-section" id="setupSection" style="display:none;">
-                    <h2 class="section-title">🚀 一键部署免密登录</h2>
-                    <div class="form-row">
-                        <div class="form-group flex-1">
-                            <label for="hostAlias">Host 别名</label>
-                            <input type="text" id="hostAlias" class="form-input" placeholder="myserver">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label for="setupHostname">服务器地址</label>
-                            <input type="text" id="setupHostname" class="form-input" placeholder="192.168.1.100">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="setupUser">SSH 用户名</label>
-                        <input type="text" id="setupUser" class="form-input" placeholder="root">
-                    </div>
-                    <div class="form-group">
-                        <label for="setupPassword">服务器密码（填写则自动上传公钥）</label>
-                        <input type="password" id="setupPassword" class="form-input" placeholder="留空则不上传">
-                    </div>
-                    <button class="btn btn-primary btn-lg" id="btnSetupGo" onclick="deployOneClick()">
-                        🚀 部署免密登录
-                    </button>
-                    <small style="display:block;margin-top:10px;color:var(--muted);text-align:center;">
-                        自动：保存私钥 → 写入 config → 上传公钥<br>
-                        之后 <code>ssh myserver</code> 或 <code>ssh IP</code> 均可免密
-                    </small>
-                </section>
-
-                <!-- 已有密钥管理 -->
+            <!-- ===== Panel 2: 密钥管理 ===== -->
+            <div class="content-panel" id="panel-manage">
                 <section class="card existing-keys-section" id="existingKeysSection">
                     <h2 class="section-title">🗂️ 本地密钥管理</h2>
                     <div id="existingKeysContent">
@@ -199,15 +298,48 @@
                     </div>
                 </section>
             </div>
-        </div>
 
-        <!-- 实时日志（全宽） -->
-        <section class="card log-section" id="logSection" style="display:none;">
-            <h2 class="section-title">📜 操作日志</h2>
-            <div class="log-box" id="logBox">
-                <div class="log-entry log-info">等待操作...</div>
+            <!-- ===== Panel 3: 我的连接 ===== -->
+            <div class="content-panel" id="panel-connections">
+                <div id="connectionsGrid" class="connections-grid">
+                    <div style="grid-column:1/-1;text-align:center;padding:20px;">
+                        <span class="loading-text">⏳ 加载中...</span>
+                    </div>
+                </div>
+
+                <details class="add-section" id="addSection">
+                    <summary>➕ 手动添加连接</summary>
+                    <div class="add-form">
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="addAlias">Host 别名</label>
+                                <input type="text" id="addAlias" class="form-input" placeholder="myserver">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="addHostname">服务器地址</label>
+                                <input type="text" id="addHostname" class="form-input" placeholder="192.168.1.100">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="addUser">SSH 用户名</label>
+                                <input type="text" id="addUser" class="form-input" placeholder="root">
+                            </div>
+                            <div class="form-group" style="width:90px;">
+                                <label for="addPort">端口</label>
+                                <input type="number" id="addPort" class="form-input" value="22">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="addIdFile">IdentityFile（可选）</label>
+                            <input type="text" id="addIdFile" class="form-input" placeholder="留空则使用已有配置 ~/.ssh/id_ed25519">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveConnection()">💾 保存连接</button>
+                    </div>
+                </details>
             </div>
-        </section>
+
+        </main>
     </div>
 
     <footer class="footer">
