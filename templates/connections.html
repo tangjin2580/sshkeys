@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的连接 — SSH Key Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .connections-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        .conn-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            transition: border-color var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        .conn-card:hover { border-color: var(--primary); }
+        .conn-card::before {
+            content: "";
+            position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+            background: var(--primary); opacity: 0; transition: opacity var(--transition);
+        }
+        .conn-card:hover::before { opacity: 1; }
+        .conn-alias { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+        .conn-alias code { font-family: var(--font-mono); color: var(--primary); background: none; font-size: 1.05rem; }
+        .conn-addr { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; font-family: var(--font-mono); }
+        .conn-key { font-size: 0.75rem; color: var(--muted); font-family: var(--font-mono); margin-bottom: 12px; word-break: break-all; }
+        .conn-key.invalid { color: var(--danger); }
+        .conn-key.invalid::before { content: "⚠️ "; }
+        .conn-key.valid::before { content: "✅ "; }
+        .conn-actions { display: flex; gap: 8px; }
+        .conn-actions .btn { font-size: 0.8rem; padding: 6px 16px; }
+        .conn-connect { background: var(--success); color: #fff; border-color: var(--success); flex: 1; font-weight: 600; }
+        .conn-connect:hover { background: var(--success-hover); border-color: var(--success-hover); }
+        .conn-delete { color: var(--danger); border-color: transparent; background: none; }
+        .conn-delete:hover { background: rgba(248,81,73,0.1); }
+        .nav-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+        }
+        .nav-back { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+        .nav-back:hover { color: var(--primary); }
+        .nav-title { font-size: 1.1rem; font-weight: 600; }
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--text-secondary); }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+        .empty-state p { margin: 6px 0; font-size: 0.9rem; }
+        .add-section { margin-top: 24px; }
+        .add-section summary { cursor: pointer; color: var(--primary); font-size: 0.9rem; padding: 8px 0; }
+        .add-form { margin-top: 12px; padding: 16px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .add-form .form-row { gap: 10px; }
+        @media (max-width: 768px) {
+            .connections-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 确认弹窗 -->
+    <div class="modal-overlay" id="confirmModal" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-icon">⚠️</div>
+            <h3 class="modal-title" id="modalTitle">确认删除</h3>
+            <p class="modal-body" id="modalBody">此操作不可撤销，确定要继续吗？</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal()">取消</button>
+                <button class="btn btn-danger" id="modalConfirmBtn">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 导航 -->
+        <div class="nav-bar">
+            <a href="/" class="nav-back">← 返回首页</a>
+            <span class="nav-title">🔗 我的连接</span>
+            <span></span>
+        </div>
+
+        <!-- 连接卡片网格 -->
+        <div id="connectionsGrid" class="connections-grid">
+            <div style="grid-column:1/-1;color:var(--muted);text-align:center;padding:20px;">⏳ 加载中...</div>
+        </div>
+
+        <!-- 手动添加连接 -->
+        <details class="add-section" id="addSection">
+            <summary>➕ 手动添加连接</summary>
+            <div class="add-form">
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="addAlias">Host 别名</label>
+                        <input type="text" id="addAlias" class="form-input" placeholder="myserver">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label for="addHostname">服务器地址</label>
+                        <input type="text" id="addHostname" class="form-input" placeholder="192.168.1.100">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="addUser">SSH 用户名</label>
+                        <input type="text" id="addUser" class="form-input" placeholder="root">
+                    </div>
+                    <div class="form-group" style="width:90px;">
+                        <label for="addPort">端口</label>
+                        <input type="number" id="addPort" class="form-input" value="22">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="addIdFile">IdentityFile（可选）</label>
+                    <input type="text" id="addIdFile" class="form-input" placeholder="留空则使用已有配置 ~/.ssh/id_ed25519">
+                </div>
+                <button class="btn btn-primary" onclick="saveConnection()">💾 保存连接</button>
+            </div>
+        </details>
+    </div>
+
+    <footer class="footer">
+        <span>SSH Key Manager · 一键免密登录</span>
+    </footer>
+
+    <script>
+        // ============ 弹窗 ============
+        let modalCallback = null;
+        function showConfirm(title, body, cb) {
+            document.getElementById("modalTitle").textContent = title;
+            document.getElementById("modalBody").textContent = body;
+            document.getElementById("confirmModal").style.display = "flex";
+            modalCallback = cb;
+            document.getElementById("modalConfirmBtn").focus();
+        }
+        function closeModal() {
+            document.getElementById("confirmModal").style.display = "none";
+            modalCallback = null;
+        }
+        document.getElementById("confirmModal").addEventListener("click", e => {
+            if (e.target === document.getElementById("confirmModal")) closeModal();
+        });
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") closeModal();
+        });
+        document.getElementById("modalConfirmBtn").addEventListener("click", () => {
+            if (modalCallback) modalCallback();
+            closeModal();
+        });
+
+        // ============ Toast ============
+        function showToast(msg, type) {
+            const t = document.createElement("div");
+            t.className = `toast toast-${type || "info"}`;
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+
+        // ============ 加载连接列表 ============
+        async function loadConnections() {
+            const grid = document.getElementById("connectionsGrid");
+            try {
+                const res = await fetch("/api/connections");
+                const data = await res.json();
+                if (!data.success || !data.connections || data.connections.length === 0) {
+                    grid.innerHTML = `
+                    <div class="empty-state" style="grid-column:1/-1;">
+                        <div class="icon">📭</div>
+                        <p>还没有保存任何连接</p>
+                        <p style="font-size:0.8rem;">去<a href="/">首页</a>生成密钥并部署，或点下方「手动添加」</p>
+                    </div>`;
+                    return;
+                }
+                grid.innerHTML = data.connections.map(c => {
+                    const keyValid = c.key_valid !== false;
+                    const keyClass = c.identity_file ? (keyValid ? 'valid' : 'invalid') : '';
+                    const keyText = c.identity_file
+                        ? (keyValid ? '🔑 ' + esc(c.identity_file) : '密钥文件不存在: ' + esc(c.identity_file))
+                        : '⚡ 无需额外配置';
+                    return `
+                <div class="conn-card">
+                    <div class="conn-alias"><code>${esc(c.alias)}</code></div>
+                    <div class="conn-addr">${esc(c.user)}@${esc(c.hostname)}${c.port && c.port !== 22 ? ':' + c.port : ''}</div>
+                    <div class="conn-key ${keyClass}">${keyText}</div>
+                    <div class="conn-actions">
+                        <button class="btn conn-connect" onclick="connectServer('${esc(c.alias)}')" ${keyValid ? '' : 'disabled title="密钥文件不存在，请先生成并部署密钥"'}>${keyValid ? '🚀 一键连接' : '🔒 密钥缺失'}</button>
+                        <button class="btn conn-delete" onclick="deleteConn('${esc(c.id)}', '${esc(c.alias)}')" title="删除">🗑️</button>
+                    </div>
+                </div>`}).join("");
+            } catch (e) {
+                grid.innerHTML = `<div style="grid-column:1/-1;color:var(--danger);text-align:center;">加载失败: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // ============ 一键连接 ============
+        async function connectServer(alias) {
+            showToast("正在启动终端...", "info");
+            try {
+                const res = await fetch("/api/connections/connect", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ alias }),
+                });
+                const data = await res.json();
+                showToast(data.message, data.success ? "success" : "error");
+            } catch (e) {
+                showToast("请求失败: " + e.message, "error");
+            }
+        }
+
+        // ============ 删除连接 ============
+        function deleteConn(id, alias) {
+            showConfirm(
+                "确认删除连接？",
+                `将从连接管理中移除 "${alias}"，此操作不可撤销。\n（不会删除 ~/.ssh 中的密钥文件）`,
+                async () => {
+                    try {
+                        const res = await fetch(`/api/connections/${id}`, { method: "DELETE" });
+                        const data = await res.json();
+                        showToast(data.message, data.success ? "success" : "error");
+                        loadConnections();
+                    } catch (e) {
+                        showToast("请求失败: " + e.message, "error");
+                    }
+                }
+            );
+        }
+
+        // ============ 手动保存 ============
+        async function saveConnection() {
+            const alias = document.getElementById("addAlias").value.trim();
+            const hostname = document.getElementById("addHostname").value.trim();
+            const user = document.getElementById("addUser").value.trim();
+            const port = parseInt(document.getElementById("addPort").value) || 22;
+            const idFile = document.getElementById("addIdFile").value.trim();
+
+            if (!alias || !hostname || !user) return showToast("请填写必填项", "error");
+
+            try {
+                const res = await fetch("/api/connections", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ alias, hostname, user, port, identity_file: idFile }),
+                });
+                const data = await res.json();
+                showToast(data.message, data.success ? "success" : "error");
+                if (data.success) {
+                    document.getElementById("addAlias").value = "";
+                    document.getElementById("addHostname").value = "";
+                    document.getElementById("addUser").value = "";
+                    document.getElementById("addPort").value = "22";
+                    document.getElementById("addIdFile").value = "";
+                    document.getElementById("addSection").open = false;
+                    loadConnections();
+                }
+            } catch (e) {
+                showToast("请求失败: " + e.message, "error");
+            }
+        }
+
+        // ============ 工具 ============
+        function esc(s) {
+            if (!s) return "";
+            return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        // ============ 初始化 ============
+        loadConnections();
+    </script>
+</body>
+</html>
