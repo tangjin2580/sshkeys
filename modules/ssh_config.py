@@ -8,12 +8,16 @@ SSH Config 读写模块
 import os
 import re
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
 from modules.utils import safe_chmod
 
 logger = logging.getLogger(__name__)
+
+# 文件操作线程锁（防止并发读写 SSH config 和密钥文件）
+_file_lock = threading.Lock()
 
 
 def get_ssh_dir() -> Path:
@@ -30,14 +34,17 @@ def get_config_path() -> Path:
 
 def list_existing_keys() -> list[dict]:
     """
-    扫描 ~/.ssh 目录中已有的私钥文件
+    递归扫描 ~/.ssh 目录及其子目录中所有的私钥文件
 
     Returns:
         [{"name": "id_ed25519", "path": "/Users/xxx/.ssh/id_ed25519",
           "has_pub": true, "size": 411, "type": "ed25519"}, ...]
     """
     ssh_dir = get_ssh_dir()
+    logger.info(f"扫描 SSH 目录: {ssh_dir}")
+    
     if not ssh_dir.exists():
+        logger.warning(f"SSH 目录不存在: {ssh_dir}")
         return []
 
     keys = []
@@ -46,7 +53,8 @@ def list_existing_keys() -> list[dict]:
     skip_prefixes = (".",)  # 隐藏文件：.DS_Store 等
 
     try:
-        for entry in sorted(ssh_dir.iterdir()):
+        # 使用 rglob 递归扫描所有文件
+        for entry in sorted(ssh_dir.rglob("*"), key=lambda x: str(x)):
             if not entry.is_file():
                 continue
             if entry.name.endswith(".pub"):
@@ -61,9 +69,18 @@ def list_existing_keys() -> list[dict]:
             if key_type == "unknown":
                 continue
 
-            pub_path = ssh_dir / f"{entry.name}.pub"
+            # 检查同级目录是否有对应的 .pub 文件
+            pub_path = entry.parent / f"{entry.name}.pub"
+            
+            # 生成显示名称：如果在子目录中，包含相对路径
+            try:
+                rel_path = entry.relative_to(ssh_dir)
+                display_name = str(rel_path).replace("\\", "/")
+            except ValueError:
+                display_name = entry.name
+            
             keys.append({
-                "name": entry.name,
+                "name": display_name,
                 "path": str(entry),
                 "has_pub": pub_path.exists(),
                 "size": entry.stat().st_size,
@@ -171,45 +188,46 @@ def add_or_update_host(
     config_path = get_config_path()
     ssh_dir = get_ssh_dir()
 
-    # 确保 ~/.ssh 目录存在
-    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    with _file_lock:
+        # 确保 ~/.ssh 目录存在
+        ssh_dir.mkdir(mode=0o700, exist_ok=True)
 
-    # 读取现有配置
-    lines = []
-    if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    else:
+        # 读取现有配置
         lines = []
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        else:
+            lines = []
 
-    # 构建新条目：Host 同时包含别名和 IP/域名，两者均可免密登录
-    host_pattern = f"{host_alias} {hostname}" if hostname != host_alias else host_alias
-    new_entry = (
-        f"Host {host_pattern}\n"
-        f"    HostName {hostname}\n"
-        f"    User {user}\n"
-        f"    Port {port}\n"
-        f"    IdentityFile {identity_file}\n"
-        f"    IdentitiesOnly yes\n"
-    )
+        # 构建新条目：Host 同时包含别名和 IP/域名，两者均可免密登录
+        host_pattern = f"{host_alias} {hostname}" if hostname != host_alias else host_alias
+        new_entry = (
+            f"Host {host_pattern}\n"
+            f"    HostName {hostname}\n"
+            f"    User {user}\n"
+            f"    Port {port}\n"
+            f"    IdentityFile {identity_file}\n"
+            f"    IdentitiesOnly yes\n"
+        )
 
-    # 查找是否已存在同名 Host，存在则替换
-    replaced = _replace_host_block(lines, host_alias, new_entry)
+        # 查找是否已存在同名 Host，存在则替换
+        replaced = _replace_host_block(lines, host_alias, new_entry)
 
-    if not replaced:
-        # 追加到文件末尾
-        if lines and not lines[-1].endswith("\n"):
+        if not replaced:
+            # 追加到文件末尾
+            if lines and not lines[-1].endswith("\n"):
+                lines.append("\n")
+            if lines and lines[-1].strip() != "":
+                lines.append("\n")
+            lines.append(new_entry)
             lines.append("\n")
-        if lines and lines[-1].strip() != "":
-            lines.append("\n")
-        lines.append(new_entry)
-        lines.append("\n")
 
-    # 写入
-    new_content = "".join(lines)
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(new_content)
-    safe_chmod(str(config_path), 0o600)
+        # 写入
+        new_content = "".join(lines)
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        safe_chmod(str(config_path), 0o600)
 
     logger.info(f"SSH config 已更新: Host {host_alias}")
     return True
@@ -272,26 +290,27 @@ def save_key_to_ssh_dir(
     ssh_dir = get_ssh_dir()
     ssh_dir.mkdir(mode=0o700, exist_ok=True)
 
-    # 生成不冲突的文件名
-    base_name = f"id_{key_type}"
-    filename = base_name
-    counter = 1
-    while (ssh_dir / filename).exists():
-        filename = f"{base_name}_{counter}"
-        counter += 1
+    with _file_lock:
+        # 生成不冲突的文件名
+        base_name = f"id_{key_type}"
+        filename = base_name
+        counter = 1
+        while (ssh_dir / filename).exists():
+            filename = f"{base_name}_{counter}"
+            counter += 1
 
-    private_path = ssh_dir / filename
-    public_path = ssh_dir / f"{filename}.pub"
+        private_path = ssh_dir / filename
+        public_path = ssh_dir / f"{filename}.pub"
 
-    # 写入私钥
-    with open(private_path, "w", encoding="utf-8") as f:
-        f.write(private_key_str)
-    safe_chmod(str(private_path), 0o600)
+        # 写入私钥
+        with open(private_path, "w", encoding="utf-8") as f:
+            f.write(private_key_str)
+        safe_chmod(str(private_path), 0o600)
 
-    # 写入公钥
-    with open(public_path, "w", encoding="utf-8") as f:
-        f.write(public_key_str + "\n")
-    safe_chmod(str(public_path), 0o644)
+        # 写入公钥
+        with open(public_path, "w", encoding="utf-8") as f:
+            f.write(public_key_str + "\n")
+        safe_chmod(str(public_path), 0o644)
 
     logger.info(f"密钥已保存到 ~/.ssh/: {filename}")
     return {
@@ -347,42 +366,43 @@ def remove_host_from_config(host_alias: str) -> dict:
     if not config_path.exists():
         return {"success": False, "message": "SSH config 文件不存在"}
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with _file_lock:
+        with open(config_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-    in_block = False
-    block_start = -1
-    block_end = -1
+        in_block = False
+        block_start = -1
+        block_end = -1
 
-    for i, line in enumerate(lines):
-        m = re.match(r"^\s*Host\s+(.+)", line, re.IGNORECASE)
-        if m:
-            if in_block:
-                block_end = i
-                break
-            hosts = m.group(1).split()
-            # 支持部分匹配：如 host_alias 出现在多值 Host 行 "myvps 10.0.0.1" 中
-            if host_alias in hosts or host_alias == m.group(1).strip():
-                in_block = True
-                block_start = i
+        for i, line in enumerate(lines):
+            m = re.match(r"^\s*Host\s+(.+)", line, re.IGNORECASE)
+            if m:
+                if in_block:
+                    block_end = i
+                    break
+                hosts = m.group(1).split()
+                # 支持部分匹配：如 host_alias 出现在多值 Host 行 "myvps 10.0.0.1" 中
+                if host_alias in hosts or host_alias == m.group(1).strip():
+                    in_block = True
+                    block_start = i
 
-    if not in_block or block_start < 0:
-        return {"success": False, "message": f"未找到 Host 条目: {host_alias}"}
+        if not in_block or block_start < 0:
+            return {"success": False, "message": f"未找到 Host 条目: {host_alias}"}
 
-    if block_end < 0:
-        block_end = len(lines)
+        if block_end < 0:
+            block_end = len(lines)
 
-    # 删除块（包括块后紧跟的空行）
-    del lines[block_start:block_end]
-    # 清理可能残留的空行
-    while block_start < len(lines) and lines[block_start].strip() == "":
-        del lines[block_start]
-    if block_start > 0 and block_start < len(lines) and lines[block_start - 1].strip() == "":
-        del lines[block_start - 1]
+        # 删除块（包括块后紧跟的空行）
+        del lines[block_start:block_end]
+        # 清理可能残留的空行
+        while block_start < len(lines) and lines[block_start].strip() == "":
+            del lines[block_start]
+        if block_start > 0 and block_start < len(lines) and lines[block_start - 1].strip() == "":
+            del lines[block_start - 1]
 
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-    safe_chmod(str(config_path), 0o600)
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        safe_chmod(str(config_path), 0o600)
 
     logger.info(f"已从 SSH config 移除: Host {host_alias}")
     return {"success": True, "message": f"已移除 Host 条目: {host_alias}"}

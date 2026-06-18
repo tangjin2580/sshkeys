@@ -90,7 +90,7 @@ class SSHKeyGenerator:
             )
             public_key = private_key.public_key()
         elif key_type == "dsa":
-            # DSA 仅支持 1024 位（OpenSSH 限制）
+            # DSA 仅支持 1024 位（OpenSSH 限制），忽略 key_size 参数
             private_key = dsa.generate_private_key(
                 key_size=1024,
                 backend=default_backend(),

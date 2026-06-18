@@ -31,6 +31,7 @@ from modules.connections_store import (
     load_all as load_connections,
     add_connection,
     delete_connection,
+    batch_sync_from_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,12 +76,6 @@ def _create_progress_callback():
 def index():
     """主页面"""
     return render_template("index.html", key_types=KEY_TYPES)
-
-
-@app.route("/connections")
-def connections_page():
-    """连接管理页面"""
-    return render_template("connections.html", key_types=KEY_TYPES)
 
 
 # ==================== SSE 端点 ====================
@@ -232,17 +227,45 @@ def upload_key():
         "username": "...",        // server 模式需要
         "password": "...",        // server 模式可选
         "port": 22,               // server 模式可选
+        "key_name": "...",        // 指定使用已有密钥文件名（可选）
+        "public_key": "...",      // 或直接提供公钥内容（可选）
         "gitlab_url": "..."       // GitLab 自托管实例 (可选)
     }
     """
     global _current_keys
     data = request.get_json() or {}
 
-    if not _current_keys.get("public_key"):
-        return jsonify({"success": False, "error": "请先生成密钥"}), 400
+    # 优先使用指定的密钥文件
+    key_name = data.get("key_name", "").strip()
+    public_key = data.get("public_key", "").strip()
+    
+    if key_name:
+        # 从指定密钥文件读取公钥
+        try:
+            ssh_dir = get_ssh_dir()
+            key_file = ssh_dir / key_name
+            pub_key_file = ssh_dir / f"{key_name}.pub"
+            
+            if not key_file.exists():
+                return jsonify({"success": False, "error": f"密钥文件不存在: {key_name}"}), 404
+            if not pub_key_file.exists():
+                return jsonify({"success": False, "error": f"公钥文件不存在: {key_name}.pub"}), 404
+            
+            with open(pub_key_file, 'r', encoding='utf-8') as f:
+                public_key = f.read().strip()
+        except Exception as e:
+            logger.exception(f"读取密钥文件失败: {key_name}")
+            return jsonify({"success": False, "error": f"读取密钥文件失败: {str(e)}"}), 500
+    elif public_key:
+        # 使用前端传来的公钥
+        pass
+    elif _current_keys.get("public_key"):
+        # 使用最近生成的密钥
+        public_key = _current_keys["public_key"]
+    else:
+        return jsonify({"success": False, "error": "请先生成密钥或选择已有密钥"}), 400
 
-    public_key = _current_keys["public_key"]
-    target = data.get("target", "github")
+    target = data.get("target", "server")
     progress_cb = _create_progress_callback()
 
     try:
@@ -313,6 +336,7 @@ def get_existing_keys():
             return jsonify({"success": False, "error": "文件不存在"}), 404
 
         keys = list_existing_keys()
+        logger.info(f"找到 {len(keys)} 个密钥: {[k['name'] for k in keys]}")
         return jsonify({"success": True, "keys": keys})
     except Exception as e:
         logger.exception("读取已有密钥失败")
@@ -476,27 +500,11 @@ def delete_config_host():
 def list_connections():
     """获取所有连接 — 自动从 ~/.ssh/config 同步"""
     try:
-        # 1. 读取已有手动保存的连接
-        saved_conns = load_connections()
-
-        # 2. 解析 SSH config，自动导入/更新条目
+        # 1. 解析 SSH config，批量同步到 connections.json（1 次读 + 1 次写）
         config_entries = parse_ssh_config()
-        for entry in config_entries:
-            alias = entry.get("host", "").split()[0]
-            if not alias or alias == "*":
-                continue
-            # 自动同步到 connections.json（已存在则更新）
-            add_connection(
-                alias=alias,
-                hostname=entry.get("hostname", ""),
-                user=entry.get("user", ""),
-                identity_file=entry.get("identityfile", ""),
-                port=entry.get("port", 22),
-            )
+        conns = batch_sync_from_config(config_entries)
 
-        # 3. 返回最新列表，附加密钥有效性检查
-        conns = load_connections()
-        from pathlib import Path
+        # 2. 附加密钥有效性检查
         for c in conns:
             idf = c.get("identity_file", "")
             if idf:

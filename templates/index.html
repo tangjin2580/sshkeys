@@ -73,23 +73,74 @@
     ============================================================ -->
     <div class="app-layout">
 
-        <!-- 左侧竖排标题 -->
-        <aside class="app-sidebar">
-            <h1 class="sidebar-title">SSH Key Manager</h1>
-            <p class="sidebar-subtitle">密钥管理</p>
+        <!-- 左侧折叠菜单 -->
+        <aside class="sidebar">
+            <ul>
+                <li class="logo" style="--bg: var(--primary);">
+                    <a href="#">
+                        <div class="icon"><ion-icon name="key-outline"></ion-icon></div>
+                        <div class="text">SSH Key Manager</div>
+                    </a>
+                </li>
+                <div class="menu-list">
+                    <li style="--bg: #64a19d;" class="active" data-panel="panel-generate">
+                        <a href="#">
+                            <div class="icon"><ion-icon name="flash-outline"></ion-icon></div>
+                            <div class="text">生成新密钥</div>
+                        </a>
+                    </li>
+
+                    <li style="--bg: #0fc70f;" data-panel="panel-manage">
+                        <a href="#">
+                            <div class="icon"><ion-icon name="settings-outline"></ion-icon></div>
+                            <div class="text">密钥管理</div>
+                        </a>
+                    </li>
+
+                    <li style="--bg: #2196f3;" data-panel="panel-connections">
+                        <a href="#">
+                            <div class="icon"><ion-icon name="link-outline"></ion-icon></div>
+                            <div class="text">我的连接</div>
+                        </a>
+                    </li>
+
+                    <li style="--bg: #ff9800;" data-panel="panel-log">
+                        <a href="#">
+                            <div class="icon"><ion-icon name="terminal-outline"></ion-icon></div>
+                            <div class="text">操作日志</div>
+                        </a>
+                    </li>
+                </div>
+            </ul>
         </aside>
 
-        <!-- 顶部毛玻璃菜单栏 -->
+        <!-- 顶部毛玻璃操作栏 -->
         <nav class="app-nav">
             <div class="nav-glass-distortion"></div>
             <div class="nav-glass-base"></div>
             <div class="nav-glass-border"></div>
             <div class="nav-glass-content">
-                <ul class="nav-menu">
-                    <li><button class="nav-menu-item active" data-panel="panel-generate">🔑 生成新密钥</button></li>
-                    <li><button class="nav-menu-item" data-panel="panel-manage">⚙️ 密钥管理</button></li>
-                    <li><button class="nav-menu-item" data-panel="panel-connections">🔗 我的连接</button></li>
-                </ul>
+                <div class="nav-tabs">
+                    <button class="nav-tab active" data-panel="panel-generate">🔑 生成新密钥</button>
+                    <button class="nav-tab" data-panel="panel-manage">⚙️ 密钥管理</button>
+                    <button class="nav-tab" data-panel="panel-connections">🔗 我的连接</button>
+                    <button class="nav-tab" data-panel="panel-log">📜 操作日志</button>
+                </div>
+                <div class="nav-actions">
+                    <div class="nav-context active" data-for-panel="panel-generate">
+                        <button class="nav-action-btn" onclick="quickGenerateEd25519()">⚡ 快速生成</button>
+                        <button class="nav-action-btn" onclick="scrollToSetup()">🚀 免密登录</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-manage">
+                        <button class="nav-action-btn" onclick="loadExistingConfig()">🔄 刷新列表</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-connections">
+                        <button class="nav-action-btn" onclick="toggleAddSection()">➕ 添加连接</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-log">
+                        <button class="nav-action-btn" onclick="clearLog()">🗑️ 清空</button>
+                    </div>
+                </div>
             </div>
         </nav>
 
@@ -182,7 +233,7 @@
                     <!-- 右栏 -->
                     <div class="col-right">
                         <!-- 上传 + 部署区 -->
-                        <section class="card upload-section" id="uploadSection" style="display:none;">
+                        <section class="card upload-section" id="uploadSection">
                             <h2 class="section-title">📤 上传与部署</h2>
                             <div class="tabs">
                                 <button class="tab active" onclick="switchTab('server')">🖥️ 远程服务器</button>
@@ -192,6 +243,13 @@
 
                             <!-- 远程服务器面板 -->
                             <div class="tab-panel active" id="panel-server">
+                                <div class="form-group">
+                                    <label for="serverKeySelect">选择密钥</label>
+                                    <select id="serverKeySelect" class="form-select">
+                                        <option value="">-- 请先在左侧生成或选择密钥 --</option>
+                                    </select>
+                                    <small>选择要上传的公钥，或使用当前生成的密钥</small>
+                                </div>
                                 <div class="form-row">
                                     <div class="form-group flex-1">
                                         <label for="serverHost">服务器地址</label>
@@ -261,9 +319,15 @@
                                     <input type="text" id="setupHostname" class="form-input" placeholder="192.168.1.100">
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label for="setupUser">SSH 用户名</label>
-                                <input type="text" id="setupUser" class="form-input" placeholder="root">
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="setupUser">SSH 用户名</label>
+                                    <input type="text" id="setupUser" class="form-input" placeholder="root">
+                                </div>
+                                <div class="form-group" style="width:90px;">
+                                    <label for="setupPort">端口</label>
+                                    <input type="number" id="setupPort" class="form-input" value="22">
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label for="setupPassword">服务器密码（填写则自动上传公钥）</label>
@@ -279,14 +343,6 @@
                         </section>
                     </div>
                 </div>
-
-                <!-- 实时日志（全宽） -->
-                <section class="card log-section" id="logSection" style="display:none;">
-                    <h2 class="section-title">📜 操作日志</h2>
-                    <div class="log-box" id="logBox">
-                        <div class="log-entry log-info">等待操作...</div>
-                    </div>
-                </section>
             </div>
 
             <!-- ===== Panel 2: 密钥管理 ===== -->
@@ -339,12 +395,29 @@
                 </details>
             </div>
 
+            <!-- ===== Panel 4: 操作日志 ===== -->
+            <div class="content-panel" id="panel-log">
+                <section class="card log-panel-section">
+                    <div class="log-panel-header">
+                        <h2 class="section-title">📜 操作日志</h2>
+                        <button class="btn btn-sm btn-outline" id="clearLogBtn" onclick="clearLog()">清空日志</button>
+                    </div>
+                    <div class="log-box log-box-full" id="logBox">
+                        <div class="log-entry log-info">等待操作...</div>
+                    </div>
+                </section>
+            </div>
+
         </main>
     </div>
 
     <footer class="footer">
         <span>SSH Key Manager · Windows / macOS / Linux</span>
     </footer>
+
+    <!-- Ionicons -->
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
 
     <script src="/static/script.js"></script>
 </body>

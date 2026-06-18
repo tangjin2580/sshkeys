@@ -42,12 +42,9 @@ PORT = 5200
 APP_URL = f"http://{HOST}:{PORT}"
 
 # ==================== 优雅关闭 ====================
-_running = True
 
 def _shutdown(signum, frame):
-    global _running
     logger.info("收到终止信号，正在关闭服务...")
-    _running = False
     # 清空 SSE 队列
     for q in _sse_queues:
         try:
@@ -82,6 +79,7 @@ def main():
         port=PORT,
         debug=False,
         use_reloader=False,
+        threaded=True,
     )
 
 if __name__ == "__main__":

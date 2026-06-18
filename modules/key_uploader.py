@@ -4,8 +4,6 @@ SSH 公钥上传模块
 """
 
 import logging
-import tempfile
-import os
 from typing import Optional, Callable
 
 import requests

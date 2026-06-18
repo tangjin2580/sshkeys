@@ -1,7 +1,7 @@
 // ============ State ============
 let sseSource = null;
-let currentDeployProps = null;
 let wipeAnimating = false;
+let logUnread = 0;
 
 // ============ 主题切换（含对角线 wipe 动画） ============
 function initThemeToggle() {
@@ -32,12 +32,6 @@ function initThemeToggle() {
         if (wipeAnimating || !wipe) return;
         wipeAnimating = true;
 
-        // 动画期间禁用页面背景过渡
-        docEl.classList.add('wiping');
-
-        // 立即切换主题：按钮动画在遮罩下同步进行
-        updateTheme(isDark);
-
         // 计算切换按钮在视口中的中心坐标
         const btnRect = btn.getBoundingClientRect();
         const cx = btnRect.left + btnRect.width / 2;
@@ -52,33 +46,52 @@ function initThemeToggle() {
         );
         const radius = Math.ceil(maxDist) + 20;
 
-        const duration = '0.75s cubic-bezier(0.65, 0, 0.35, 1)';
+        // 遮罩动画时长（更快）
+        const wipeDuration = '0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        // 主题切换过渡时长（更自然）
+        const themeDuration = '0.8s ease-in-out';
 
         if (isDark) {
-            // 黑夜模式：圆形从按钮放大到全屏
+            // 当前是黑夜，要切换到白天：白色圆圈扩散
+            wipe.style.backgroundColor = 'rgba(254, 249, 240, 0.2)';
             wipe.style.transition = 'clip-path 0s';
             wipe.style.clipPath = `circle(0 at ${cx}px ${cy}px)`;
             void wipe.offsetWidth;
-            wipe.style.transition = `clip-path ${duration}`;
+            wipe.style.transition = `clip-path ${wipeDuration}`;
             wipe.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
         } else {
-            // 白天模式：圆形从全屏缩小到按钮
+            // 当前是白天，要切换到黑夜：黑色圆圈扩散
+            wipe.style.backgroundColor = 'rgba(10, 10, 26, 0.2)';
             wipe.style.transition = 'clip-path 0s';
-            wipe.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
-            void wipe.offsetWidth;
-            wipe.style.transition = `clip-path ${duration}`;
             wipe.style.clipPath = `circle(0 at ${cx}px ${cy}px)`;
+            void wipe.offsetWidth;
+            wipe.style.transition = `clip-path ${wipeDuration}`;
+            wipe.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
         }
 
         function onFinish() {
             wipe.removeEventListener('transitionend', onFinish);
+            
+            // 遮罩覆盖完毕后，立即切换主题
+            updateTheme(isDark);
+            
+            // 应用主题过渡动画
+            docEl.classList.add('theme-transitioning');
+            docEl.style.setProperty('--theme-transition-duration', themeDuration);
+            
             wipe.style.clipPath = '';
             wipe.style.transition = '';
-            docEl.classList.remove('wiping');
-            wipeAnimating = false;
+            wipe.style.backgroundColor = '';
+            
+            // 主题切换完成后，清理样式
+            setTimeout(() => {
+                docEl.classList.remove('theme-transitioning');
+                docEl.style.removeProperty('--theme-transition-duration');
+                wipeAnimating = false;
+            }, 800);
         }
         wipe.addEventListener('transitionend', onFinish);
-        setTimeout(onFinish, 800);
+        setTimeout(onFinish, 650);
     }
 
     function handleClick() {
@@ -113,18 +126,72 @@ function initThemeToggle() {
     });
 }
 
-// ============ 菜单面板切换 ============
-function initMenuSwitching() {
-    const menuItems = document.querySelectorAll('.nav-menu-item[data-panel]');
-    if (!menuItems.length) return;
+// ============ 顶栏标签页 + 上下文操作区切换 ============
+function updateNavContext(panelId) {
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.panel === panelId);
+    });
+    document.querySelectorAll('.nav-context').forEach(ctx => {
+        ctx.classList.toggle('active', ctx.dataset.forPanel === panelId);
+    });
+}
 
-    menuItems.forEach(item => {
-        item.addEventListener('click', function () {
+function initNavTabs() {
+    const tabs = document.querySelectorAll('.nav-tab[data-panel]');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function () {
             const panelId = this.dataset.panel;
 
-            // 更新菜单激活状态
-            menuItems.forEach(mi => mi.classList.remove('active'));
+            // 切换内容面板
+            document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+            const target = document.getElementById(panelId);
+            if (target) target.classList.add('active');
+
+            // 同步顶栏标签 + 操作区
+            updateNavContext(panelId);
+
+            // 同步侧边栏
+            document.querySelectorAll('.menu-list li[data-panel]').forEach(si => {
+                si.classList.toggle('active', si.dataset.panel === panelId);
+            });
+
+            // 面板特定加载
+            if (panelId === 'panel-connections') loadConnections();
+            if (panelId === 'panel-manage') loadExistingConfig();
+            if (panelId === 'panel-log') { logUnread = 0; updateLogBadge(); }
+        });
+    });
+}
+
+// ============ 侧边栏菜单切换 ============
+function initSidebarMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+
+    const sidebarItems = sidebar.querySelectorAll('.menu-list li[data-panel]');
+    if (!sidebarItems.length) return;
+
+    // 点击展开/收起侧边栏（点击 logo 区域）
+    const logo = sidebar.querySelector('.logo');
+    if (logo) {
+        logo.addEventListener('click', (e) => {
+            e.preventDefault();
+            sidebar.classList.toggle('active');
+        });
+    }
+
+    // 菜单项点击
+    sidebarItems.forEach(item => {
+        item.addEventListener('click', function (e) {
+            e.preventDefault();
+            const panelId = this.dataset.panel;
+
+            // 更新侧边栏激活状态
+            sidebarItems.forEach(si => si.classList.remove('active'));
             this.classList.add('active');
+
+            // 同步顶部操作栏上下文
+            updateNavContext(panelId);
 
             // 切换内容面板
             document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -136,6 +203,17 @@ function initMenuSwitching() {
             // 切换到连接面板时自动加载
             if (panelId === 'panel-connections') {
                 loadConnections();
+            }
+
+            // 切换到密钥管理面板时自动加载
+            if (panelId === 'panel-manage') {
+                loadExistingConfig();
+            }
+
+            // 切换到日志面板时清零未读计数
+            if (panelId === 'panel-log') {
+                logUnread = 0;
+                updateLogBadge();
             }
         });
     });
@@ -162,9 +240,7 @@ function initSSE() {
 // ============ 日志 ============
 function log(msg, level = "info") {
     const box = document.getElementById("logBox");
-    const section = document.getElementById("logSection");
-    if (!box || !section) return;
-    section.style.display = "block";
+    if (!box) return;
     const now = new Date().toLocaleTimeString();
     if (box.firstChild && box.firstChild.textContent.includes("等待操作")) box.innerHTML = "";
     const el = document.createElement("div");
@@ -172,6 +248,84 @@ function log(msg, level = "info") {
     el.innerHTML = `<span class="log-time">${now}</span>${msg}`;
     box.appendChild(el);
     box.scrollTop = box.scrollHeight;
+    // 不在日志面板时更新未读计数
+    const logPanel = document.getElementById("panel-log");
+    if (logPanel && !logPanel.classList.contains("active")) {
+        logUnread++;
+        updateLogBadge();
+    }
+}
+
+function clearLog() {
+    const box = document.getElementById("logBox");
+    if (!box) return;
+    box.innerHTML = '<div class="log-entry log-info">等待操作...</div>';
+}
+
+function updateLogBadge() {
+    document.querySelectorAll('[data-panel="panel-log"]').forEach(el => {
+        let badge = el.querySelector(".log-badge");
+        if (logUnread > 0) {
+            if (!badge) {
+                badge = document.createElement("span");
+                badge.className = "log-badge";
+                // 侧边栏：插入到 .icon 内（已有 position:relative），角标定位在图标右上角
+                const iconEl = el.querySelector('.icon');
+                if (iconEl) {
+                    iconEl.appendChild(badge);
+                } else {
+                    el.appendChild(badge);
+                }
+            }
+            badge.textContent = logUnread > 99 ? "99+" : logUnread;
+        } else if (badge) {
+            badge.remove();
+        }
+    });
+}
+
+// ============ 顶栏快捷操作 ============
+async function quickGenerateEd25519() {
+    log("⚡ 快速生成 Ed25519 密钥 ...");
+    try {
+        const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key_type: "ed25519", key_size: 256, comment: "user@host", save_path: "" }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast("Ed25519 密钥已生成并保存！", "success");
+            log("✓ Ed25519 密钥生成完成", "success");
+            // 如果当前在生成面板，刷新显示
+            if (typeof showKey === "function") showKey(data);
+            if (typeof loadServerKeySelect === "function") loadServerKeySelect();
+        } else {
+            showToast(data.error || "生成失败", "error");
+            log(data.error || "生成失败", "error");
+        }
+    } catch (err) {
+        showToast("网络错误", "error");
+        log("网络错误: " + err.message, "error");
+    }
+}
+
+function toggleAddSection() {
+    const details = document.getElementById("addSection");
+    if (!details) return;
+    // 如果不在连接面板，先切过去
+    const connPanel = document.getElementById("panel-connections");
+    if (connPanel && !connPanel.classList.contains("active")) {
+        document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+        connPanel.classList.add('active');
+        // 同步侧边栏
+        document.querySelectorAll('.menu-list li[data-panel]').forEach(si => {
+            si.classList.toggle('active', si.dataset.panel === 'panel-connections');
+        });
+        updateNavContext("panel-connections");
+        loadConnections();
+    }
+    details.open = !details.open;
 }
 
 // ============ Toast ============
@@ -227,6 +381,8 @@ async function generateKey() {
     const body = { key_type: keyType, key_size: keySize, comment };
     if (keyType === "ecdsa" && opt.dataset.curve) body.curve = opt.dataset.curve;
     if (passphrase) body.passphrase = passphrase;
+    // 自动保存到 ~/.ssh/ 目录
+    body.save_path = "";  // 空字符串表示使用默认路径 ~/.ssh/
 
     try {
         const res = await fetch("/api/generate", {
@@ -237,11 +393,9 @@ async function generateKey() {
         const data = await res.json();
         if (data.success) {
             showKey(data);
-            const uploadSection = document.getElementById("uploadSection");
-            const setupSection = document.getElementById("setupSection");
-            if (uploadSection) uploadSection.style.display = "block";
-            if (setupSection) setupSection.style.display = "block";
-            showToast("密钥生成成功！", "success");
+            showToast("密钥生成成功并已保存！", "success");
+            // 刷新密钥列表
+            loadServerKeySelect();
         } else {
             showToast(data.error || "生成失败", "error");
             log(data.error || "生成失败", "error");
@@ -257,8 +411,11 @@ async function generateKey() {
 
 function showKey(data) {
     const section = document.getElementById("keyDisplaySection");
+    if (section) section.style.display = "block";
+    // 同时显示一键部署区
+    const setup = document.getElementById("setupSection");
+    if (setup) setup.style.display = "block";
     if (!section) return;
-    section.style.display = "block";
     const info = document.getElementById("keyInfo");
     info.innerHTML = `<span>类型: ${data.key_type}</span><span>大小: ${data.key_size} bits</span>`;
     if (data.fingerprint) info.innerHTML += `<span>指纹: ${data.fingerprint}</span>`;
@@ -273,23 +430,67 @@ function switchTab(name) {
     document.getElementById("panel-" + name).classList.add("active");
 }
 
+// ============ 加载服务器密钥下拉框 ============
+async function loadServerKeySelect() {
+    const select = document.getElementById("serverKeySelect");
+    if (!select) return;
+
+    try {
+        const res = await fetch("/api/existing-keys");
+        const data = await res.json();
+
+        // 保留第一个选项（提示文本）
+        const firstOption = select.options[0];
+        select.innerHTML = "";
+        select.appendChild(firstOption);
+
+        if (data.success && data.keys && data.keys.length > 0) {
+            data.keys.forEach(k => {
+                const option = document.createElement("option");
+                option.value = k.name;
+                option.textContent = `${k.name} (${k.type.toUpperCase()})`;
+                select.appendChild(option);
+            });
+            
+            // 如果有密钥，更新提示文本
+            firstOption.textContent = "-- 使用当前生成的密钥 --";
+            firstOption.disabled = false;
+        } else {
+            firstOption.textContent = "暂无本地密钥，请在左侧生成";
+            firstOption.disabled = true;
+        }
+    } catch (err) {
+        console.error("加载密钥列表失败:", err);
+    }
+}
+
 // ============ 上传 ============
-async function uploadKey(platform) {
+async function uploadKey(target) {
     const pubKeyEl = document.getElementById("publicKeyText");
     if (!pubKeyEl) return;
     const pubKey = pubKeyEl.textContent.trim();
-    if (!pubKey) return showToast("请先生成密钥", "error");
 
-    let body = { public_key: pubKey, platform };
-    if (platform === "server") {
+    let body = { target };
+    
+    // 如果选择了已有密钥，不需要传 public_key，后端会自己读取
+    const selectedKey = document.getElementById("serverKeySelect").value;
+    if (selectedKey && target === "server") {
+        body.key_name = selectedKey;
+    } else if (pubKey) {
+        body.public_key = pubKey;
+    } else {
+        return showToast("请先生成密钥或选择已有密钥", "error");
+    }
+    
+    if (target === "server") {
         body.host = document.getElementById("serverHost").value.trim();
         body.port = parseInt(document.getElementById("serverPort").value) || 22;
         body.username = document.getElementById("serverUser").value.trim();
         body.password = document.getElementById("serverPassword").value.trim();
-    } else if (platform === "github") {
+    } else if (target === "github") {
         body.token = document.getElementById("githubToken").value.trim();
         body.title = document.getElementById("githubTitle").value.trim() || "SSH Key Manager";
-    } else if (platform === "gitlab") {
+    } else if (target === "gitlab") {
         body.token = document.getElementById("gitlabToken").value.trim();
         body.url = document.getElementById("gitlabUrl").value.trim();
         body.title = document.getElementById("gitlabTitle").value.trim() || "SSH Key Manager";
@@ -314,6 +515,7 @@ async function deployOneClick() {
     const hostAlias = document.getElementById("hostAlias").value.trim();
     const hostname = document.getElementById("setupHostname").value.trim();
     const user = document.getElementById("setupUser").value.trim();
+    const port = parseInt(document.getElementById("setupPort").value) || 22;
     const password = document.getElementById("setupPassword").value.trim();
     const pubKeyEl = document.getElementById("publicKeyText");
     if (!pubKeyEl) return;
@@ -327,8 +529,6 @@ async function deployOneClick() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>部署中...';
 
-    currentDeployProps = { hostAlias, hostname };
-
     try {
         const res = await fetch("/api/save-and-setup", {
             method: "POST",
@@ -337,7 +537,7 @@ async function deployOneClick() {
                 host_alias: hostAlias,
                 hostname: hostname,
                 user: user,
-                port: 22,
+                port: port,
                 upload: !!password,
                 upload_password: password || undefined,
             }),
@@ -361,6 +561,15 @@ async function deployOneClick() {
     }
 }
 
+function scrollToSetup() {
+    const setup = document.getElementById("setupSection");
+    if (!setup || setup.style.display === "none") {
+        return showToast("请先在左侧生成密钥", "warning");
+    }
+    setup.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("hostAlias").focus();
+}
+
 // ============ 已有密钥管理 ============
 async function loadExistingConfig() {
     const container = document.getElementById("existingKeysContent");
@@ -368,19 +577,17 @@ async function loadExistingConfig() {
     container.innerHTML = '<span class="loading-text">⏳ 加载中...</span>';
 
     try {
-        const [keyRes, configRes] = await Promise.all([
-            fetch("/api/existing-keys"),
-            fetch("/api/ssh-config"),
-        ]);
-        const keyData = await keyRes.json();
+        const configRes = await fetch("/api/ssh-config");
         const configData = await configRes.json();
 
+        // /api/ssh-config 已包含 existing_keys，无需再调 /api/existing-keys
+        const keys = configData.existing_keys || [];
         let html = "";
 
         // 密钥文件列表
-        if (keyData.success && keyData.keys && keyData.keys.length > 0) {
+        if (keys.length > 0) {
             html += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">🔑 密钥文件</div>';
-            keyData.keys.forEach(k => {
+            keys.forEach(k => {
                 html += `
                 <div class="key-item">
                     <div class="key-item-left">
@@ -480,7 +687,9 @@ function copyPublicKey() {
 }
 
 function downloadPrivateKey() {
-    showToast("私钥下载功能请在前端完成，为安全起见不在服务端暴露完整私钥", "info");
+    const el = document.getElementById("publicKeyText");
+    if (!el || !el.textContent.trim()) return showToast("请先生成密钥", "error");
+    window.location.href = "/api/download-private-key";
 }
 
 async function copyKeyFile(name, type) {
@@ -628,13 +837,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     initThemeToggle();
-    initMenuSwitching();
+    initNavTabs();
+    initSidebarMenu();
     initSSE();
+    updateNavContext("panel-generate");
     loadExistingConfig();
-
-    // 连接页面自动加载
-    const isConnectionsPage = !document.querySelector('.nav-menu-item[data-panel]') && document.getElementById('connectionsGrid');
-    if (isConnectionsPage) {
-        loadConnections();
-    }
+    loadServerKeySelect();  // 加载密钥列表
 });
