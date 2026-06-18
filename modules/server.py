@@ -531,6 +531,71 @@ def delete_config_host():
     return jsonify(result)
 
 
+@app.route("/api/ssh-config/batch", methods=["POST"])
+def batch_update_ssh_config():
+    """
+    批量写入 SSH config 条目（追加/覆盖）
+    请求体: {
+        "entries": [
+            {"host": "srv1", "hostname": "1.2.3.4", "user": "root", "port": 22, "identityfile": "~/.ssh/id_ed25519"},
+            ...
+        ]
+    }
+    """
+    data = request.get_json() or {}
+    entries = data.get("entries", [])
+
+    if not entries or not isinstance(entries, list):
+        return jsonify({"success": False, "error": "请提供 entries 数组"}), 400
+
+    success_count = 0
+    errors = []
+
+    for i, entry in enumerate(entries):
+        host = entry.get("host", "").strip()
+        hostname = entry.get("hostname", "").strip()
+        user = entry.get("user", "").strip()
+        port = entry.get("port", 22)
+        identityfile = entry.get("identityfile", "").strip()
+
+        if not host or not hostname or not user:
+            errors.append(f"条目 {i+1}: Host/HostName/User 为必填")
+            continue
+
+        try:
+            ok = add_or_update_host(
+                host_alias=host,
+                hostname=hostname,
+                user=user,
+                identity_file=identityfile or f"~/.ssh/id_{host}",
+                port=int(port) if port else 22,
+            )
+            if ok:
+                success_count += 1
+                _sse_broadcast("progress", {
+                    "message": f"✓ 已写入: Host {host}",
+                    "time": datetime.now().strftime("%H:%M:%S")
+                })
+            else:
+                errors.append(f"条目 {i+1} ({host}): 写入失败")
+        except Exception as e:
+            errors.append(f"条目 {i+1} ({host}): {str(e)}")
+
+    if success_count == 0 and errors:
+        return jsonify({"success": False, "error": "全部失败", "errors": errors}), 500
+
+    result = {
+        "success": True,
+        "count": success_count,
+        "errors": errors if errors else None,
+    }
+    _sse_broadcast("progress", {
+        "message": f"批量写入完成: {success_count}/{len(entries)} 个条目",
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
+    return jsonify(result)
+
+
 # ==================== 连接管理 ====================
 
 @app.route("/api/connections", methods=["GET"])

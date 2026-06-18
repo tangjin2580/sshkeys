@@ -160,7 +160,9 @@ def parse_ssh_config() -> list[dict]:
                     # 遇到新 Host，保存上一个
                     if current:
                         entries.append(current)
-                    current = {"host": value, "hostname": "", "user": "", "port": 22, "identityfile": ""}
+                    # Host 行可能有多个值（别名 + IP），只取第一个作为别名
+                    host_alias = value.split()[0] if value.split() else value
+                    current = {"host": host_alias, "hostname": "", "user": "", "port": 22, "identityfile": ""}
                 elif key == "hostname":
                     current["hostname"] = value
                 elif key == "user":

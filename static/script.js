@@ -362,6 +362,11 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && modal && modal.style.display === "flex") {
         closeModal();
     }
+    // SSH Config 模态框也支持 Escape 关闭
+    const sshConfigModal = document.getElementById("sshConfigModal");
+    if (e.key === "Escape" && sshConfigModal && sshConfigModal.style.display === "flex") {
+        closeSSHConfigModal();
+    }
 });
 
 // ============ 密钥生成 ============
@@ -808,6 +813,169 @@ async function saveConnection() {
     }
 }
 
+// ============ SSH Config 编辑模态框 ============
+let _sshKeyList = []; // 缓存 ~/.ssh 下的密钥列表
+
+function openSSHConfigModal() {
+    const modal = document.getElementById("sshConfigModal");
+    if (!modal) return;
+    modal.style.display = "flex";
+    loadSSHConfigData();
+}
+
+async function loadSSHConfigData() {
+    // 并行加载密钥列表和 config 条目
+    const [keysRes, configRes] = await Promise.all([
+        fetch("/api/existing-keys").then(r => r.json()).catch(() => ({ keys: [] })),
+        fetch("/api/ssh-config").then(r => r.json()).catch(() => ({ config_entries: [] })),
+    ]);
+    // 缓存密钥文件名（仅私钥，去重）
+    _sshKeyList = (keysRes.keys || []).map(k => `~/.ssh/${k.name}`);
+
+    const container = document.getElementById("sshConfigEntries");
+    if (!container) return;
+    container.innerHTML = "";
+    const entries = (configRes.config_entries || []);
+    if (entries.length > 0) {
+        entries.forEach(entry => addSSHConfigRow(entry));
+    } else {
+        addSSHConfigRow();
+    }
+}
+
+function closeSSHConfigModal() {
+    const modal = document.getElementById("sshConfigModal");
+    if (modal) modal.style.display = "none";
+}
+
+async function loadSSHConfigEntries() {
+    // 兼容旧调用 — 已由 loadSSHConfigData 替代
+    await loadSSHConfigData();
+}
+
+function _buildIdentitySelect(currentValue) {
+    // 构建 IdentityFile 下拉框，包含已有密钥 + 手动输入选项
+    const options = ['<option value="">（不指定）</option>'];
+    const seen = new Set();
+    // 先列出 ~/.ssh 里的密钥
+    _sshKeyList.forEach(path => {
+        const selected = path === currentValue ? ' selected' : '';
+        options.push(`<option value="${esc(path)}"${selected}>${esc(path)}</option>`);
+        seen.add(path);
+    });
+    // 如果当前值不在列表中，也加进去
+    if (currentValue && !seen.has(currentValue)) {
+        options.push(`<option value="${esc(currentValue)}" selected>${esc(currentValue)}</option>`);
+    }
+    // 末尾加一个"手动输入"选项
+    options.push('<option value="__manual__">✏️ 手动输入...</option>');
+    return `<select class="form-input identity-select">${options.join('')}</select>`;
+}
+
+function addSSHConfigRow(entry = null) {
+    const container = document.getElementById("sshConfigEntries");
+    if (!container) return;
+    // 移除加载提示
+    const loading = container.querySelector(".loading-text");
+    if (loading) loading.remove();
+
+    const currentIdFile = entry?.identityfile || '';
+    const row = document.createElement("div");
+    row.className = "ssh-config-row";
+    row.innerHTML = `
+        <div class="form-group">
+            <label>Host</label>
+            <input type="text" class="form-input" placeholder="myserver" value="${esc(entry?.host || '')}">
+        </div>
+        <div class="form-group">
+            <label>HostName</label>
+            <input type="text" class="form-input" placeholder="192.168.1.100" value="${esc(entry?.hostname || '')}">
+        </div>
+        <div class="form-group">
+            <label>User</label>
+            <input type="text" class="form-input" placeholder="root" value="${esc(entry?.user || '')}">
+        </div>
+        <div class="form-group">
+            <label>Port</label>
+            <input type="number" class="form-input" placeholder="22" value="${entry?.port || 22}">
+        </div>
+        <div class="form-group identity-group">
+            <label>IdentityFile</label>
+            ${_buildIdentitySelect(currentIdFile)}
+        </div>
+        <button class="btn-row-remove" title="删除此行" onclick="this.closest('.ssh-config-row').remove()">✕</button>
+    `;
+    // 绑定 select change 事件：选"手动输入"时切换为 input
+    const sel = row.querySelector('.identity-select');
+    if (sel) {
+        sel.addEventListener('change', function () {
+            if (this.value === '__manual__') {
+                const group = this.closest('.identity-group');
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-input identity-manual';
+                input.placeholder = '~/.ssh/id_ed25519';
+                group.innerHTML = '';
+                group.appendChild(input);
+                input.focus();
+            }
+        });
+    }
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+}
+
+async function saveSSHConfig() {
+    const container = document.getElementById("sshConfigEntries");
+    if (!container) return;
+    const rows = container.querySelectorAll(".ssh-config-row");
+    const entries = [];
+
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll("input");
+        const host = inputs[0].value.trim();
+        const hostname = inputs[1].value.trim();
+        const user = inputs[2].value.trim();
+        const port = parseInt(inputs[3].value) || 22;
+        // IdentityFile: 优先取 select，否则取手动 input
+        const sel = row.querySelector('.identity-select');
+        const manual = row.querySelector('.identity-manual');
+        let identityfile = '';
+        if (sel && sel.value && sel.value !== '__manual__') {
+            identityfile = sel.value;
+        } else if (manual) {
+            identityfile = manual.value.trim();
+        }
+        if (host && hostname && user) {
+            entries.push({ host, hostname, user, port, identityfile });
+        }
+    });
+
+    if (entries.length === 0) {
+        showToast("请至少填写一个有效条目", "error");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/ssh-config/batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entries }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast(`已保存 ${data.count || entries.length} 个条目`, "success");
+            closeSSHConfigModal();
+            // 刷新密钥管理面板
+            if (typeof loadExistingConfig === "function") loadExistingConfig();
+        } else {
+            showToast(data.error || "保存失败", "error");
+        }
+    } catch (err) {
+        showToast("请求失败: " + err.message, "error");
+    }
+}
+
 // ============ 工具 ============
 function esc(s) {
     if (!s) return "";
@@ -833,6 +1001,14 @@ document.addEventListener("DOMContentLoaded", () => {
         modalConfirmBtn.addEventListener("click", () => {
             if (modalCallback) modalCallback();
             closeModal();
+        });
+    }
+
+    // SSH Config 编辑模态框：点击背景关闭
+    const sshConfigModal = document.getElementById("sshConfigModal");
+    if (sshConfigModal) {
+        sshConfigModal.addEventListener("click", (e) => {
+            if (e.target === sshConfigModal) closeSSHConfigModal();
         });
     }
 

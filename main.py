@@ -165,8 +165,10 @@ def main():
 
     if args.dev:
         # 开发模式：Flask 启动快，简单延迟打开浏览器
+        # create_app() 返回的是 WSGI 中间件，需要提取内部的 Flask app
+        flask_app = app._app if hasattr(app, '_app') else app
         threading.Timer(1.5, _open_browser).start()
-        _serve_dev(app)
+        _serve_dev(flask_app)
     else:
         # 生产模式：后台线程启动 Waitress，等端口就绪后再打开浏览器
         server_thread = threading.Thread(
