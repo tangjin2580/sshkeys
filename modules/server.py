@@ -4,6 +4,7 @@ Flask 服务端 — 提供 REST API + SSE 实时推送
 
 import os
 import io
+import sys
 import json
 import queue
 import threading
@@ -68,7 +69,13 @@ def _check_cdn(timeout: float = 3.0) -> bool:
 
 
 # --- Flask App 初始化 ---
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+if getattr(sys, "frozen", False):
+    # PyInstaller --onefile 模式：资源在临时解压目录中
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+
 TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 

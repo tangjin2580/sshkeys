@@ -43,9 +43,14 @@ jobs:
       - name: Build with PyInstaller
         shell: bash
         run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
           pyinstaller --onefile --console --name ${{ matrix.artifact_name }} \
-            --add-data "templates:templates" \
-            --add-data "static:static" \
+            --add-data "templates${SEP}templates" \
+            --add-data "static${SEP}static" \
             --hidden-import modules \
             --hidden-import modules.server \
             --hidden-import modules.key_generator \
@@ -53,6 +58,7 @@ jobs:
             --hidden-import modules.ssh_config \
             --hidden-import modules.utils \
             --hidden-import modules.connections_store \
+            --hidden-import waitress \
             main.py
 
       - name: Upload artifact
