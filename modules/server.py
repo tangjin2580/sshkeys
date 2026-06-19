@@ -14,7 +14,7 @@ from pathlib import Path
 
 from flask import (
     Flask, render_template, request, jsonify,
-    Response, stream_with_context, send_file
+    Response, stream_with_context, send_file,
 )
 
 from modules.key_generator import SSHKeyGenerator, KEY_TYPES
@@ -37,35 +37,6 @@ from modules.connections_store import (
 
 logger = logging.getLogger(__name__)
 
-# --- CDN 可达性检测 ---
-_cdn_available: bool | None = None
-
-CDN_TARGETS = [
-    ("https://fonts.googleapis.com", "Google Fonts"),
-    ("https://unpkg.com", "unpkg CDN"),
-]
-
-def _check_cdn(timeout: float = 3.0) -> bool:
-    """启动时检测外部 CDN 是否可达，结果缓存"""
-    import urllib.request
-    import urllib.error
-    ok_count = 0
-    for url, label in CDN_TARGETS:
-        try:
-            req = urllib.request.Request(url, method="HEAD",
-                                         headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                if resp.status < 400:
-                    logger.info(f"  CDN 可达: {label} ({url})")
-                    ok_count += 1
-                else:
-                    logger.warning(f"  CDN 异常: {label} → HTTP {resp.status}")
-        except Exception as e:
-            logger.warning(f"  CDN 不可达: {label} → {e}")
-    # 至少有一个 CDN 可达即视为可用
-    available = ok_count > 0
-    logger.info(f"  CDN 总体状态: {'✅ 可用（使用 CDN 加速）' if available else '❌ 不可达（使用本地资源）'}")
-    return available
 
 
 # --- Flask App 初始化 ---
@@ -80,6 +51,7 @@ TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 # SSE 消息队列 (全局，每个请求一个队列)
 _sse_queues: list[queue.Queue] = []
@@ -113,7 +85,7 @@ def _create_progress_callback():
 @app.route("/")
 def index():
     """主页面"""
-    return render_template("index.html", key_types=KEY_TYPES, cdn_available=_cdn_available)
+    return render_template("index.html", key_types=KEY_TYPES)
 
 
 # ==================== SSE 端点 ====================
@@ -209,11 +181,16 @@ def generate_key():
                 save_result = {"error": str(e)}
 
         _sse_broadcast("progress", {"message": "✓ 密钥生成完成", "time": datetime.now().strftime("%H:%M:%S")})
+        # 计算指纹
+        from modules.key_generator import compute_fingerprint
+        fingerprint = compute_fingerprint(pub_str)
+
         _sse_broadcast("key_generated", {
             "public_key": pub_str,
             "key_type": key_type,
             "key_size": key_size,
             "comment": comment,
+            "fingerprint": fingerprint,
             "has_passphrase": bool(passphrase),
             "saved": save_result,
         })
@@ -224,6 +201,7 @@ def generate_key():
             "key_type": key_type,
             "key_size": key_size,
             "comment": comment,
+            "fingerprint": fingerprint,
             "has_passphrase": bool(passphrase),
             "saved": save_result,
         })
@@ -667,16 +645,31 @@ def connect_to_server():
         return jsonify({"success": False, "error": "请指定连接别名"}), 400
 
     _sse_broadcast("progress", {"message": f"正在启动 SSH 连接到 {alias} ...", "time": datetime.now().strftime("%H:%M:%S")})
-
     try:
+
         if sys.platform == "win32":
-            # Windows — 优先 Windows Terminal，回退 cmd
-            if shutil.which("wt.exe"):
-                subprocess.Popen(["wt.exe", "ssh", alias])
-            elif shutil.which("cmd.exe"):
-                subprocess.Popen(["cmd.exe", "/c", "start", "ssh", alias, "&&", "pause"])
-            else:
-                return jsonify({"success": False, "error": "无法找到可用终端，请手动执行 ssh " + alias}), 500
+            import subprocess as _sp
+            terminal_path = data.get("terminal_path", "").strip()
+            success = False
+            
+            def exists(path):
+                r = _sp.run(["where", path], capture_output=True, text=True)
+                return r.returncode == 0
+            
+            # 尝试用户指定的终端
+            if terminal_path and exists(terminal_path):
+                try:
+                    _sp.Popen([terminal_path, "ssh", alias], creationflags=_sp.CREATE_NEW_CONSOLE)
+                    success = True
+                except Exception:
+                    success = False
+            
+            # 回退逻辑（仅当未成功时）
+            if not success:
+                if exists("wt.exe"):
+                    _sp.Popen(["wt.exe", "ssh", alias], creationflags=_sp.CREATE_NEW_CONSOLE)
+                else:
+                    _sp.Popen(["cmd.exe", "/c", "start", "cmd", "/k", f"ssh {alias}"], shell=True, creationflags=_sp.CREATE_NEW_CONSOLE)
 
         elif sys.platform == "darwin":
             # macOS — 使用 osascript 打开 Terminal
@@ -702,36 +695,82 @@ def connect_to_server():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ==================== 启动 ====================
+# ==================== 终端路径检测 ====================
 
-class _StripHopByHopHeaders:
+@app.route("/api/check-terminal-path", methods=["POST"])
+def check_terminal_path():
     """
-    WSGI 中间件：移除响应中的 hop-by-hop 头部。
-    Waitress 严格遵守 PEP 3333，禁止 WSGI 应用设置 Connection / Keep-Alive 等头部，
-    但 Werkzeug 会自动添加 Connection: keep-alive，需要在此拦截。
+    检测终端路径是否有效。
+    接受 POST，body: {"path": "wt.exe"} 或 {"path": "C:\\path\\to\\term.exe"}
+    返回: {"valid": bool, "path": str, "message": str}
     """
-    _HOP_BY_HOP = frozenset({
-        "connection", "keep-alive", "proxy-authenticate",
-        "proxy-authorization", "te", "trailer",
-        "transfer-encoding", "upgrade",
+    data = request.get_json() or {}
+    path = data.get("path", "").strip()
+    if not path:
+        return jsonify({"valid": False, "message": "路径不能为空"}), 400
+
+    import shutil
+    import os
+
+    # 判断是否是完整路径（包含路径分隔符）
+    is_absolute = "/" in path or "\\" in path
+
+    if is_absolute:
+        # 完整路径：直接检查文件是否存在
+        exists = os.path.isfile(path)
+        if exists:
+            return jsonify({
+                "valid": True,
+                "path": path,
+                "message": f"✅ 路径有效：{path}"
+            })
+        else:
+            return jsonify({
+                "valid": False,
+                "path": path,
+                "message": f"❌ 文件不存在：{path}"
+            })
+
+    # 不是完整路径：在 PATH 中查找
+    found = shutil.which(path)
+    if found:
+        return jsonify({
+            "valid": True,
+            "path": found,
+            "message": f"✅ 已找到：{found}"
+        })
+
+    # Windows 下尝试加 .exe 后缀
+    if sys.platform == "win32" and not path.lower().endswith(".exe"):
+        found = shutil.which(path + ".exe")
+        if found:
+            return jsonify({
+                "valid": True,
+                "path": found,
+                "message": f"✅ 已找到：{found}"
+            })
+
+    return jsonify({
+        "valid": False,
+        "path": path,
+        "message": f"❌ 未在 PATH 中找到：{path}"
     })
 
-    def __init__(self, app):
-        self._app = app
 
-    def __call__(self, environ, start_response):
-        def _filtered_start_response(status, headers, exc_info=None):
-            headers = [
-                (k, v) for k, v in headers
-                if k.lower() not in self._HOP_BY_HOP
-            ]
-            return start_response(status, headers, exc_info)
-        return self._app(environ, _filtered_start_response)
-
+# ==================== 启动 ====================
 
 def create_app():
-    """创建 Flask 应用实例"""
-    global _cdn_available
-    logger.info("  正在检测 CDN 可达性...")
-    _cdn_available = _check_cdn()
-    return _StripHopByHopHeaders(app)
+    """
+    创建 Flask 应用实例。
+    返回 app，供 main.py 使用。
+    """
+
+    # 注册 WebSSH HTTP API 路由（不再使用 SocketIO）
+    try:
+        from modules.webssh import register_webssh_routes, cleanup_all_sessions
+        register_webssh_routes(app)
+        logger.info("  [WebSSH] HTTP API 路由已注册")
+    except Exception as e:
+        logger.warning(f"  [WebSSH] 注册失败: {e}")
+
+    return app

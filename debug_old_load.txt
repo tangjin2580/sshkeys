@@ -1,0 +1,36 @@
+async function loadConnections() {
+    const grid = document.getElementById("connectionsGrid");
+    if (!grid) return;
+    try {
+        const res = await fetch("/api/connections");
+        const data = await res.json();
+        if (!data.success || !data.connections || data.connections.length === 0) {
+            grid.innerHTML = `
+            <div class="empty-state" style="grid-column:1/-1;">
+                <div class="icon">📭</div>
+                <p>还没有保存任何连接</p>
+                <p style="font-size:0.8rem;">去<a href="/">首页</a>生成密钥并部署，或点下方「手动添加」</p>
+            </div>`;
+            return;
+        }
+        grid.innerHTML = data.connections.map(c => {
+            const keyValid = c.key_valid !== false;
+            const keyClass = c.identity_file ? (keyValid ? 'valid' : 'invalid') : '';
+            const keyText = c.identity_file
+                ? (keyValid ? '🔑 ' + esc(c.identity_file) : '密钥文件不存在: ' + esc(c.identity_file))
+                : '⚡ 无需额外配置';
+            return `
+            <div class="conn-card">
+                <div class="conn-alias"><code>${esc(c.alias)}</code></div>
+                <div class="conn-addr">${esc(c.user)}@${esc(c.hostname)}${c.port && c.port !== 22 ? ':' + c.port : ''}</div>
+                <div class="conn-key ${keyClass}">${keyText}</div>
+                <div class="conn-actions">
+                    <button class="btn conn-connect" onclick="connectServer('${esc(c.alias)}')" ${keyValid ? '' : 'disabled title="密钥文件不存在，请先生成并部署密钥"'}>${keyValid ? '🚀 一键连接' : '🔒 密钥缺失'}</button>
+                    <button class="btn conn-delete" onclick="deleteConn('${esc(c.id)}', '${esc(c.alias)}')" title="删除">🗑️</button>
+                </div>
+            </div>`;
+        }).join("");
+    } catch (e) {
+        grid.innerHTML = `<div style="grid-column:1/-1;color:var(--danger);text-align:center;">加载失败: ${esc(e.message)}</div>`;
+    }
+}

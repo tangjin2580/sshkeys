@@ -82,6 +82,22 @@
 }
 
 /* ============================================================
+   Ionicons 基础样式（全本地，无需外部 CSS）
+   ============================================================ */
+ion-icon {
+    display: inline-block;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    contain: strict;
+}
+ion-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ============================================================
    亮色模式 — 浅蓝天空渐变 + 暖橙阳光
    ============================================================ */
 [data-theme="light"] {
@@ -334,8 +350,45 @@ body {
 }
 
 /* 面板标签页 */
-.nav-tabs { display: flex; align-items: center; gap: 0.15rem; }
+.nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    position: relative;
+    padding: 3px;
+}
+/* 滑动指示器 — 增强选块视觉效果 */
+.nav-slider {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 0;
+    width: 0;
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    z-index: 0;
+    transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+    /* 增强选块可见度：阴影 + 内发光 */
+    box-shadow:
+        0 2px 8px rgba(100, 161, 157, 0.35),
+        0 4px 16px rgba(100, 161, 157, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* 浅色模式下进一步增强选块对比度 */
+[data-theme="light"] .nav-slider {
+    background: linear-gradient(135deg, #5a9a96 0%, #64a19d 50%, #5a9a96 100%);
+    box-shadow:
+        0 2px 10px rgba(74, 130, 126, 0.4),
+        0 4px 20px rgba(74, 130, 126, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
 .nav-tab {
+    position: relative;
+    z-index: 1;
     padding: 0.35rem 0.7rem;
     font-family: var(--font-heading);
     font-size: 0.65rem;
@@ -346,17 +399,30 @@ body {
     border-radius: var(--radius-sm);
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.2s;
+    transition: color 0.22s ease;
 }
+.nav-tab { color: var(--text-muted); }
 .nav-tab:hover { color: var(--text-body); }
-.nav-tab.active { color: #fff; background: var(--primary); font-weight: 600; }
+.nav-tab.active {
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
 
 /* 分隔线 */
 .nav-actions { border-left: 1px solid var(--border); padding-left: 0.75rem; }
 
 /* 上下文操作区 */
 .nav-context { display: none; align-items: center; gap: 0.5rem; }
-.nav-context.active { display: flex; }
+.nav-context.active {
+    display: flex;
+    animation: ctxSlideIn 0.2s ease both;
+}
+
+@keyframes ctxSlideIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
 .nav-action-btn {
     padding: 0.35rem 0.7rem;
     font-family: var(--font-heading);
@@ -616,6 +682,33 @@ html.dark .sidebar ul li.logo .text {
     padding-left: 10px;
 }
 
+/* 侧边栏图标图片样式 */
+/* 侧边栏图标图片样式 —— 统一渲染 */
+.sidebar-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    opacity: 0.65;
+    transition: all 0.3s ease;
+}
+
+/* 悬停/激活态：品牌色高亮 */
+.sidebar ul li:hover .sidebar-icon,
+.sidebar ul li.active .sidebar-icon {
+    opacity: 1;
+    filter: brightness(0) saturate(100%) invert(59%) sepia(88%) saturate(410%) hue-rotate(130deg) brightness(96%) contrast(101%);
+}
+
+/* 亮色模式微调 */
+html[data-theme="light"] .sidebar-icon {
+    opacity: 0.45;
+}
+html[data-theme="light"] .sidebar ul li:hover .sidebar-icon,
+html[data-theme="light"] .sidebar ul li.active .sidebar-icon {
+    opacity: 1;
+}
+
 html.dark .sidebar ul li a .icon {
     color: rgba(255, 255, 255, 0.4);
 }
@@ -743,10 +836,113 @@ html.theme-transitioning .beach {
 }
 
 /* ============================================================
-   内容面板 — 对应三个菜单
+   内容面板 — 滑动过渡（CSS Grid 无跳动方案 v2）
+   ============================================================
+   ★ 所有面板始终在文档流中（grid 叠放），
+     切换时旧面板立即隐藏（无退场动画），新面板滑入。
+     不涉及 display/position 切换，零跳动、零残留。
    ============================================================ */
-.content-panel { display: none; }
-.content-panel.active { display: block; }
+
+/* app-main 用 grid 叠放所有面板，高度由最高面板决定 */
+.app-main {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-height: calc(100vh - var(--nav-h) - 6rem);
+}
+
+/* 所有面板默认：在流中但不可见 */
+.content-panel {
+    grid-column: 1;
+    grid-row: 1;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(30px);
+    pointer-events: none;
+    transition: opacity 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+                visibility 0.30s;
+}
+
+/* 静止可见状态 */
+.content-panel.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+/* 滑入动画 — 从右侧滑入 + 淡入（仅进入，无退场） */
+.content-panel.panel-enter {
+    opacity: 0 !important;
+    visibility: visible !important;
+    transform: translateX(30px) !important;
+    pointer-events: none;
+    animation: slideInRight 0.30s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+/* app-main 用 grid 叠放所有面板，高度由最高面板决定 */
+.app-main {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-height: calc(100vh - var(--nav-h) - 6rem);
+}
+
+/* 所有面板默认：在流中但不可见 */
+.content-panel {
+    grid-column: 1;
+    grid-row: 1;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(30px);
+    pointer-events: none;
+    transition: opacity 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+                visibility 0.30s;
+}
+
+/* 静止可见状态 */
+.content-panel.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+/* 滑动进入动画 - 从右侧滑入 + 淡入 */
+.content-panel.panel-enter {
+    opacity: 0;
+    visibility: visible;
+    transform: translateX(30px);
+    pointer-events: none;
+    animation: slideInRight 0.30s cubic-bezier(0.22, 1, 0.36, 1) both;
+    z-index: 2;
+}
+
+/* 滑动退场动画 - 向左侧滑出 + 淡出 */
+.content-panel.panel-exit {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    pointer-events: none;
+    animation: slideOutLeft 0.30s cubic-bezier(0.22, 1, 0.36, 1) both;
+    z-index: 1;
+}
+
+/* 进入动画关键帧 */
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(30px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* 退场动画关键帧 */
+@keyframes slideOutLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(-30px); visibility: hidden; }
+}
 
 /* ============================================================
    卡片
@@ -895,11 +1091,37 @@ html.theme-transitioning .beach {
 .config-entry-actions { display: flex; gap: 0.375rem; flex-shrink: 0; }
 
 /* 日志面板 — 全高布局 */
-.log-panel-section { display: flex; flex-direction: column; height: calc(100vh - var(--nav-h) - 3rem); }
-.log-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-.log-box-full { flex: 1; max-height: none; overflow-y: auto; }
-.log-badge { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 0.6rem; font-weight: 600; line-height: 1; z-index: 5; pointer-events: none; }
-.log-box { background: var(--bg-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem; max-height: 200px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.73rem; }
+.log-panel-section {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--nav-h) - 7rem);
+    min-height: 500px;
+}
+.log-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+.log-box {
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+}
+/* 日志面板内全高日志框 — 必须在 .log-box 之后声明以正确覆盖 max-height */
+.log-box-full {
+    flex: 1 1 0;
+    max-height: none !important;
+    min-height: 0;
+    overflow-y: auto;
+}
+.log-badge { position: absolute; top: -5px; right: -5px; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 0.6rem; font-weight: 600; line-height: 1; z-index: 5; pointer-events: none; }
 .log-entry { padding: 0.1875rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
 .log-entry:last-child { border-bottom: none; }
 .log-time { color: var(--text-muted); margin-right: 0.5rem; }
@@ -957,6 +1179,110 @@ html.theme-transitioning .beach {
 .conn-actions .btn { font-size: 0.7rem; padding: 0.5rem 1rem; letter-spacing: 0.08rem; }
 .conn-connect { background: var(--success); color: #fff; flex: 1; font-weight: 400; box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0,0,0,0.1); }
 .conn-connect:hover:not(:disabled) { background: var(--success-dark); transform: translateY(-1px); }
+
+/* ===== 连接卡片：分割按钮（Web 终端 / 本地终端）===== */
+.conn-connect-split {
+    display: flex;
+    flex: 1;
+}
+
+.conn-connect-web {
+    flex: 1;
+    background: var(--success);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.7rem;
+    font-family: var(--font-heading);
+    font-weight: 400;
+    letter-spacing: 0.08rem;
+    cursor: pointer;
+    transition: all var(--transition);
+    box-shadow: 0 0.1875rem 0.1875rem 0 rgba(0,0,0,0.1);
+    white-space: nowrap;
+}
+
+.conn-connect-web:hover:not(:disabled) {
+    background: var(--success-dark);
+    transform: translateY(-1px);
+}
+
+.conn-connect-web:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.conn-connect-local {
+    background: var(--success-dark);
+    color: #fff;
+    border: none;
+    border-left: 1px solid rgba(255,255,255,0.25);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.7rem;
+    font-family: var(--font-heading);
+    font-weight: 400;
+    letter-spacing: 0.08rem;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+
+.conn-connect-local:hover:not(:disabled) {
+    background: #3d8a64;
+    transform: translateY(-1px);
+}
+
+.conn-connect-local:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===== 终端选择下拉菜单 ===== */
+.terminal-menu {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);  /* 在按钮上方弹出 */
+    left: 0;
+    min-width: 160px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+    overflow: hidden;
+    animation: menuFadeIn 0.15s ease-out;
+}
+
+.terminal-menu.open {
+    display: block;
+}
+
+@keyframes menuFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.terminal-menu-item {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.72rem;
+    font-family: var(--font-heading);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+}
+
+.terminal-menu-item:hover {
+    background: var(--bg-muted);
+}
+
+.terminal-menu-item:active {
+    background: var(--primary-muted);
+}
 .conn-delete { color: var(--danger); background: transparent; border: 1px solid rgba(220,53,69,0.25); }
 .conn-delete:hover { background: rgba(220,53,69,0.1); border-color: rgba(220,53,69,0.4); }
 
@@ -1211,4 +1537,578 @@ html:not(.dark) .beach {
         opacity: 1.00;
         transform: scale(var(--_spray-scale-max));
     }
+}
+
+/* ============================================================
+   无障碍：禁用动画（用户偏好）
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .starfield,
+    .cloudfield,
+    .aurora-showcase {
+        animation: none !important;
+    }
+}
+
+/* ============================================================
+   指纹展示
+   ============================================================ */
+.key-fingerprint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+}
+.fp-label {
+    font-weight: 600;
+    color: var(--primary);
+    white-space: nowrap;
+}
+.fp-value {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+   连接面板工具栏（搜索 + 批量操作）
+   ============================================================ */
+
+/* ============================================================
+   WebSSH 终端面板
+   ============================================================ */
+.webssh-section {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--nav-h) - 7rem);
+    min-height: 500px;
+}
+.webssh-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+}
+.webssh-header .section-title {
+    margin-bottom: 0;
+}
+.webssh-status {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0.625rem;
+    background: var(--bg-muted);
+    border-radius: var(--radius-sm);
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.status-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(103, 194, 156, 0.5);
+}
+.status-dot.disconnected {
+    background: var(--danger);
+}
+.status-dot.connecting {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+    animation: pulse 1s infinite;
+}
+.webssh-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.375rem;
+}
+.webssh-connection-info {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.375rem 0.625rem;
+    background: var(--bg-muted);
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+.webssh-connection-info code {
+    font-family: var(--font-mono);
+    color: var(--primary);
+}
+.webssh-terminal-wrapper {
+    flex: 1 1 0;
+    min-height: 0;
+    background: #1a1a1a;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+html:not(.dark) .webssh-terminal-wrapper {
+    background: #0d0d0d;
+}
+#websshTerminal {
+    width: 100%;
+    height: 100%;
+    padding: 0.5rem;
+}
+#websshTerminal .xterm {
+    height: 100% !important;
+}
+#websshTerminal .xterm-viewport {
+    overflow-y: auto !important;
+}
+
+/* ============================================================
+   prefers-reduced-motion（已在末尾）
+   ============================================================ */
+.connections-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.search-box {
+    position: relative;
+    flex: 1 1 200px;
+}
+.search-input {
+    width: 100%;
+    padding-left: 2.2rem;
+    background: var(--bg-muted) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23999'%3E%3Cpath d='M11 11l-4-4m0 0a4 4 0 110-4 4a4 4 0 010 4 4z'/%3E%3C/svg%3E") 0.6rem center no-repeat;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.83rem;
+}
+.toolbar-actions {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+}
+.btn-sm {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.78rem;
+}
+.btn-xs {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.72rem;
+}
+.btn-ghost {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+}
+.btn-ghost:hover {
+    background: var(--bg-muted);
+    border-color: var(--border);
+    color: var(--text-body);
+}
+
+/* ============================================================
+   批量选择
+   ============================================================ */
+.batch-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.conn-card.selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+    background: color-mix(in srgb, var(--primary) 5%, var(--bg-card));
+}
+
+/* ============================================================
+   prefers-reduced-motion（已在末尾）
+   ============================================================ */
+
+/* ============ Toast 提示 ============ */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+[class^="toast-"] {
+    padding: 10px 18px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s, transform 0.3s;
+    max-width: 360px;
+    word-break: break-all;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.toast-error   { background: #dc3545; }
+.toast-success { background: #67c29c; }
+.toast-info    { background: #17a2b8; }
+.toast-warning { background: #e4c662; color: #333; }
+
+/* ============================================================
+   本地终端下拉（顶部导航栏）
+   ============================================================ */
+.nav-local-terminal {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.nav-local-terminal .nav-action-btn {
+    white-space: nowrap;
+}
+.local-terminal-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 240px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-card, rgba(30,30,50,0.95));
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: var(--radius, 12px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    z-index: 9999;
+    padding: 6px;
+}
+.local-terminal-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.8rem;
+}
+.local-terminal-item:hover {
+    background: rgba(100,161,157,0.15);
+}
+.local-terminal-alias {
+    font-weight: 600;
+    color: var(--text, #fff);
+}
+.local-terminal-addr {
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+    font-size: 0.75rem;
+    font-family: var(--font-mono, monospace);
+}
+.local-terminal-empty,
+.local-terminal-loading {
+    padding: 16px 12px;
+    text-align: center;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+    font-size: 0.8rem;
+}
+
+/* 导航栏中的本地终端下拉 */
+.local-terminal-dropdown-nav {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    min-width: 260px;
+    max-height: 340px;
+    overflow-y: auto;
+    background: var(--bg-card, rgba(30,30,50,0.98));
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: var(--radius, 12px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    z-index: 9999;
+    padding: 6px;
+}
+
+/* 让 nav-context 成为定位基准 */
+.nav-context {
+    position: relative;
+}
+
+/* ============================================================
+   WebSSH 添加主机表单
+   ============================================================ */
+.webssh-add-host {
+    margin: 0 0 16px 0;
+    background: var(--bg-card, rgba(255,255,255,0.04));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: var(--radius, 12px);
+    overflow: hidden;
+}
+.webssh-add-host[open] summary {
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.webssh-add-host summary {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--info, #1cabc4);
+    list-style: none;
+}
+.webssh-add-host summary::-webkit-details-marker {
+    display: none;
+}
+.add-host-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.add-host-form .form-row {
+    display: flex;
+    gap: 12px;
+}
+.add-host-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.add-host-form .form-group.flex-1 {
+    flex: 1;
+}
+.add-host-form label {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+}
+.add-host-form .form-input {
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    background: var(--bg-input, rgba(255,255,255,0.06));
+    color: var(--text, #fff);
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.add-host-form .form-input:focus {
+    border-color: var(--info, #1cabc4);
+}
+.form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+/* ============================================================
+   侧边栏本地终端按钮 & 下拉菜单
+   ============================================================ */
+.sidebar-local-btn {
+    position: relative;
+}
+.sidebar-local-btn .local-terminal-dropdown {
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    right: auto;
+    z-index: 9999;
+}
+
+/* ============================================================
+   WebSSH 连接历史
+   ============================================================ */
+.webssh-history-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-card, rgba(255,255,255,0.04));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    transition: background 0.2s;
+}
+.webssh-history-card:hover {
+    background: var(--bg-hover, rgba(255,255,255,0.08));
+}
+.webssh-history-card .conn-info {
+    flex: 1;
+    min-width: 0;
+}
+.webssh-history-card .conn-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text, #fff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.webssh-history-card .conn-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+    margin-top: 2px;
+}
+.webssh-history-card .conn-time {
+    font-size: 0.7rem;
+    color: var(--text-muted, rgba(255,255,255,0.3));
+    margin-top: 2px;
+}
+.webssh-history-card .conn-actions {
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+/* ============================================================
+   本地终端下拉菜单 — 图标 + 设置项
+   ============================================================ */
+.local-terminal-icon {
+    font-size: 1.1rem;
+    color: var(--primary);
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+.local-terminal-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.local-terminal-settings-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+    margin-top: 6px;
+}
+.local-terminal-settings-item:hover {
+    background: rgba(100,161,157,0.15);
+    color: var(--text);
+}
+/* 下拉菜单图标图片 */
+/* 下拉菜单图标图片 —— 统一风格 */
+.local-terminal-icon-img {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+.local-terminal-settings-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+.input-with-btn {
+    display: flex;
+    gap: 6px;
+}
+.input-with-btn .form-input {
+    flex: 1;
+}
+.path-check-result {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    margin-top: 6px;
+    animation: fadeIn 0.3s ease;
+}
+.path-check-result.valid {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16a34a;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.path-check-result.invalid {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.path-check-result .detected-path {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(0,0,0,0.05);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 4px;
+    font-size: 0.72rem;
+}
+.dark .path-check-result .detected-path {
+    background: rgba(255,255,255,0.1);
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+
+/* ============================================================
+   WebSSH 连接历史卡片 — 图标布局
+   ============================================================ */
+.webssh-history-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.webssh-history-card .conn-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(100,161,157,0.12);
+}
+.webssh-history-card .conn-icon .history-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    opacity: 0.75;
+}
+.webssh-history-card .conn-info {
+    flex: 1;
+    min-width: 0;
+}
+.webssh-history-card .conn-actions {
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   本地终端设置面板
+   ============================================================ */
+.local-terminal-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 8px 0;
+}
+.local-terminal-settings-form .form-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.local-terminal-settings-form .btn-sm {
+    font-size: 0.75rem;
+    padding: 5px 10px;
 }

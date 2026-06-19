@@ -4,6 +4,8 @@ SSH 密钥生成模块
 """
 
 import os
+import base64
+import hashlib
 import logging
 from typing import Tuple, Optional
 
@@ -14,6 +16,26 @@ from cryptography.hazmat.backends import default_backend
 from modules.utils import safe_chmod
 
 logger = logging.getLogger(__name__)
+
+
+def compute_fingerprint(pub_str: str) -> str:
+    """
+    计算 OpenSSH 格式公钥的指纹（SHA256，与 ssh-keygen -lf 输出一致）
+    pub_str: OpenSSH 格式公钥字符串，如 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host"
+    Returns: "SHA256:xxxx"
+    """
+    # 解析出 base64 部分
+    parts = pub_str.strip().split()
+    if len(parts) < 2:
+        return ""
+    b64data = parts[1]
+    # base64 解码得到 wire format
+    wire = base64.b64decode(b64data)
+    # SHA256 计算摘要
+    digest = hashlib.sha256(wire).digest()
+    # 标准 base64 编码（非 urlsafe），去掉 padding
+    fp_b64 = base64.b64encode(digest).rstrip(b"=").decode("ascii")
+    return f"SHA256:{fp_b64}"
 
 # 支持的密钥类型（供前端下拉框使用）
 # type: 算法类型，size: 密钥位数，curve: ECDSA 曲线名（可选）

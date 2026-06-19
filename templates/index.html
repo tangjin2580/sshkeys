@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SSH Key Manager — 一键生成与上传</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <!-- Fonts: CDN or local fallback -->
-    {% if cdn_available %}
-    <link href="https://fonts.googleapis.com/css?family=Varela+Round" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css?family=Nunito:200,300,400,600,700" rel="stylesheet">
-    {% else %}
+    <!-- Fonts: 全部本地化 -->
     <link rel="stylesheet" href="/static/fonts/google-fonts.css">
-    {% endif %}
     <link rel="stylesheet" href="/static/style.css">
+    <!-- xterm.js (WebSSH 终端）— CSS 在页面底部统一引入 -->
     <script>
     (function () {
       try {
@@ -104,35 +100,43 @@
             <ul>
                 <li class="logo" style="--bg: var(--primary);">
                     <a href="#">
-                        <div class="icon"><ion-icon name="key-outline"></ion-icon></div>
+                        <div class="icon"><img src="/static/ionicons/svg/key-outline.svg" alt="icon" class="sidebar-icon" /></div>
                         <div class="text">SSH Key Manager</div>
                     </a>
                 </li>
                 <div class="menu-list">
-                    <li style="--bg: #64a19d;" class="active" data-panel="panel-generate">
+                    <li style="--bg: #00bcd4;" data-panel="panel-webssh">
                         <a href="#">
-                            <div class="icon"><ion-icon name="flash-outline"></ion-icon></div>
-                            <div class="text">生成新密钥</div>
+                            <div class="icon"><img src="/static/ionicons/svg/terminal-outline.svg" alt="icon" class="sidebar-icon" /></div>
+                            <div class="text">WebSSH</div>
                         </a>
                     </li>
 
-                    <li style="--bg: #0fc70f;" data-panel="panel-manage">
+                    <li style="--bg: #0097a7;" data-panel="panel-webssh-quick">
                         <a href="#">
-                            <div class="icon"><ion-icon name="settings-outline"></ion-icon></div>
-                            <div class="text">密钥管理</div>
+                            <div class="icon"><img src="/static/ionicons/svg/flash-outline.svg" alt="icon" class="sidebar-icon" /></div>
+                            <div class="text">快速连接</div>
                         </a>
                     </li>
 
-                    <li style="--bg: #2196f3;" data-panel="panel-connections">
+                    <li style="--bg: #00838f;" data-panel="panel-webssh-history">
                         <a href="#">
-                            <div class="icon"><ion-icon name="link-outline"></ion-icon></div>
-                            <div class="text">我的连接</div>
+                            <div class="icon"><img src="/static/ionicons/svg/time-outline.svg" alt="icon" class="sidebar-icon" /></div>
+                            <div class="text">连接历史</div>
                         </a>
                     </li>
 
-                    <li style="--bg: #ff9800;" data-panel="panel-log">
+                    <li style="--bg: #607d8b;" data-panel="panel-local-terminal-settings">
                         <a href="#">
-                            <div class="icon"><ion-icon name="terminal-outline"></ion-icon></div>
+                            <div class="icon"><img src="/static/ionicons/svg/desktop-outline.svg" alt="icon" class="sidebar-icon" /></div>
+                            <div class="text">本地终端</div>
+                        </a>
+                    </li>
+
+                    <!-- 操作日志 -->
+                    <li style="--bg: #795548;" data-panel="panel-log">
+                        <a href="javascript:void(0)" onclick="switchPanel('panel-log')">
+                            <div class="icon"><img src="/static/ionicons/svg/document-text-outline.svg" alt="icon" class="sidebar-icon" /></div>
                             <div class="text">操作日志</div>
                         </a>
                     </li>
@@ -147,15 +151,15 @@
             <div class="nav-glass-border"></div>
             <div class="nav-glass-content">
                 <div class="nav-tabs">
+                    <div class="nav-slider"></div>
                     <button class="nav-tab active" data-panel="panel-generate">🔑 生成新密钥</button>
                     <button class="nav-tab" data-panel="panel-manage">⚙️ 密钥管理</button>
                     <button class="nav-tab" data-panel="panel-connections">🔗 我的连接</button>
-                    <button class="nav-tab" data-panel="panel-log">📜 操作日志</button>
                 </div>
                 <div class="nav-actions">
                     <div class="nav-context active" data-for-panel="panel-generate">
                         <button class="nav-action-btn" onclick="quickGenerateEd25519()">⚡ 快速生成</button>
-                        <button class="nav-action-btn" onclick="scrollToSetup()">🚀 免密登录</button>
+                        <button class="nav-action-btn" onclick="scrollToSetup()">🎯 免密登录</button>
                     </div>
                     <div class="nav-context" data-for-panel="panel-manage">
                         <button class="nav-action-btn" onclick="loadExistingConfig()">🔄 刷新列表</button>
@@ -165,6 +169,22 @@
                     </div>
                     <div class="nav-context" data-for-panel="panel-log">
                         <button class="nav-action-btn" onclick="clearLog()">🗑️ 清空</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-webssh">
+                        <button class="nav-action-btn" onclick="switchPanel('panel-webssh-quick')">⚡ 快速连接</button>
+                        <button class="nav-action-btn" onclick="switchPanel('panel-webssh-history')">📜 连接历史</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-webssh-quick">
+                        <button class="nav-action-btn" onclick="switchPanel('panel-webssh')">↩️ 返回终端</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-webssh-history">
+                        <button class="nav-action-btn" onclick="switchPanel('panel-webssh')">↩️ 返回终端</button>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-local-terminal-settings">
+                        <div class="nav-action-group">
+                            <button class="nav-action-btn" onclick="toggleLocalTerminalDropdownFromNav()">🚀 启动终端</button>
+                        </div>
+                        <div class="local-terminal-dropdown-nav" id="localTerminalDropdownNav" style="display:none;"></div>
                     </div>
                 </div>
             </div>
@@ -246,6 +266,12 @@
                         <section class="card key-display-section" id="keyDisplaySection" style="display:none;">
                             <h2 class="section-title">📋 生成的公钥</h2>
                             <div class="key-info" id="keyInfo"></div>
+                            <!-- 指纹展示 -->
+                            <div class="key-fingerprint" id="keyFingerprint" style="display:none;">
+                                <span class="fp-label">指纹</span>
+                                <code class="fp-value" id="fingerprintText"></code>
+                                <button class="btn btn-xs btn-ghost" onclick="copyFingerprint()" title="复制指纹">📋</button>
+                            </div>
                             <div class="key-box">
                                 <code id="publicKeyText" class="key-text"></code>
                             </div>
@@ -386,6 +412,28 @@
 
             <!-- ===== Panel 3: 我的连接 ===== -->
             <div class="content-panel" id="panel-connections">
+                <!-- 搜索 + 批量操作栏 -->
+                <div class="connections-toolbar">
+                    <div class="search-box">
+                        <input type="text" id="connSearch" class="form-input search-input" placeholder="搜索连接..." oninput="filterConnections()">
+                        <span class="search-icon">🔍</span>
+                    </div>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-ghost btn-sm" id="batchToggleBtn" onclick="toggleBatchMode()">
+                            ☑️ 批量
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="batchDeleteBtn" style="display:none;" onclick="batchDelete()">
+                            🗑️ 删除
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="batchUploadBtn" style="display:none;" onclick="batchUpload()">
+                            ⬆️ 上传公钥
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="batchCancelBtn" style="display:none;" onclick="cancelBatchMode()">
+                            ✖️ 取消
+                        </button>
+                    </div>
+                </div>
+
                 <div id="connectionsGrid" class="connections-grid">
                     <div style="grid-column:1/-1;text-align:center;padding:20px;">
                         <span class="loading-text">⏳ 加载中...</span>
@@ -437,6 +485,123 @@
                 </section>
             </div>
 
+            <!-- ===== Panel 5: WebSSH 终端 ===== -->
+            <div class="content-panel" id="panel-webssh">
+                <section class="card webssh-section">
+                    <div class="webssh-header">
+                        <h2 class="section-title">💻 WebSSH 终端</h2>
+                        <div class="webssh-status" id="websshStatus">
+                            <span class="status-dot"></span>
+                            <span class="status-text">未连接</span>
+                        </div>
+                        <div class="webssh-actions">
+                            <button class="btn btn-sm btn-outline" onclick="switchPanel('panel-webssh-quick')">⚡ 快速连接</button>
+                            <button class="btn btn-sm btn-danger" id="websshDisconnectBtn" onclick="disconnectWebSSH()" style="display:none;">断开连接</button>
+                        </div>
+                    </div>
+                    <div class="webssh-connection-info" id="websshConnInfo" style="display:none;">
+                        <code id="websshConnText"></code>
+                    </div>
+                    <div class="webssh-terminal-wrapper">
+                        <div id="websshTerminal"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== Panel 6: WebSSH 快速连接 ===== -->
+            <div class="content-panel" id="panel-webssh-quick">
+                <section class="card">
+                    <h2 class="section-title">⚡ 快速连接</h2>
+                    <p class="text-secondary mb-1">手动输入连接信息，直接启动 WebSSH 终端（不保存配置）</p>
+                    <div class="add-host-form">
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label>远程地址（Hostname / IP）</label>
+                                <input type="text" id="quickHostname" class="form-input" placeholder="192.168.1.100 或 example.com">
+                            </div>
+                            <div class="form-group" style="width:90px;">
+                                <label>端口</label>
+                                <input type="number" id="quickPort" class="form-input" value="22">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label>账户名（Username）</label>
+                                <input type="text" id="quickUsername" class="form-input" placeholder="root">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>连接名称（可选，用于历史记录）</label>
+                                <input type="text" id="quickAlias" class="form-input" placeholder="我的服务器">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label>密码（可选，留空则使用密钥登录）</label>
+                                <input type="password" id="quickPassword" class="form-input" placeholder="留空则使用密钥登录">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>密钥文件路径（可选）</label>
+                                <input type="text" id="quickIdentityFile" class="form-input" placeholder="~/.ssh/id_ed25519">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="submitQuickConnect()">🚀 立即连接</button>
+                            <button class="btn btn-outline" onclick="switchPanel('panel-webssh')">取消</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== Panel 7: WebSSH 连接历史 ===== -->
+            <div class="content-panel" id="panel-webssh-history">
+                <section class="card">
+                    <div class="webssh-header">
+                        <h2 class="section-title">📜 连接历史</h2>
+                        <div class="webssh-actions">
+                            <button class="btn btn-sm btn-outline" onclick="clearWebSSHHistory()">🗑️ 清空历史</button>
+                        </div>
+                    </div>
+                    <div id="websshHistoryList" class="conn-list">
+                        <div class="empty-hint">暂无连接历史</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== Panel 8: 本地终端设置 ===== -->
+            <div class="content-panel" id="panel-local-terminal-settings">
+                <section class="card">
+                    <div class="webssh-header">
+                        <h2 class="section-title">⚙️ 本地终端设置</h2>
+                    </div>
+                    <div class="local-terminal-settings-form">
+                        <p class="text-secondary mb-1">自定义点击「本地终端」时启动的终端程序路径</p>
+                        <div class="form-group">
+                            <label>终端程序路径</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="localTerminalPath" class="form-input" placeholder="wt.exe">
+                                <button class="btn btn-outline btn-sm" onclick="checkTerminalPath()" title="检测路径是否有效">🔍 检测</button>
+                            </div>
+                            <small>例如：wt.exe、cmd.exe、powershell.exe、C:\Program Files\Git\bin\bash.exe</small>
+                            <div id="terminalPathCheckResult" class="path-check-result" style="display:none;"></div>
+                        </div>
+                        <div class="form-row" style="margin-top:12px;">
+                            <button class="btn btn-outline btn-sm" onclick="setLocalTerminalPreset('wt.exe')">Windows Terminal</button>
+                            <button class="btn btn-outline btn-sm" onclick="setLocalTerminalPreset('cmd.exe')">CMD</button>
+                            <button class="btn btn-outline btn-sm" onclick="setLocalTerminalPreset('powershell.exe')">PowerShell</button>
+                            <button class="btn btn-outline btn-sm" onclick="setLocalTerminalPreset('git-bash')">Git Bash</button>
+                            <button class="btn btn-outline btn-sm" onclick="autoDetectTerminal()" title="自动检测系统中已安装的终端">🔎 自动检测</button>
+                        </div>
+                        <div id="terminalAutoDetectResult" class="path-check-result" style="display:none; margin-top:8px;"></div>
+                        <div class="form-actions" style="margin-top:20px;">
+                            <button class="btn btn-primary" onclick="saveLocalTerminalPath()">💾 保存设置</button>
+                        </div>
+                        <div class="text-secondary mt-1" style="font-size:0.78rem;">
+                            💡 保存后下次点击「本地终端」时将使用此路径启动
+                        </div>
+                    </div>
+                </section>
+            </div>
+
         </main>
     </div>
 
@@ -444,10 +609,12 @@
         <span>SSH Key Manager · Windows / macOS / Linux</span>
     </footer>
 
-    <!-- Ionicons: always use local (small, already bundled) -->
-    <script type="module" src="/static/ionicons/ionicons.esm.js"></script>
-    <script nomodule src="/static/ionicons/ionicons.js"></script>
+    <!-- xterm.js (WebSSH 终端）— 本地文件，无需 CDN -->
+    <link rel="stylesheet" href="/static/xterm.css">
+    <script src="/static/xterm.js"></script>
+    <script src="/static/xterm-addon-fit.js"></script>
 
     <script src="/static/script.js"></script>
+    <script src="/static/webssh.js"></script>
 </body>
 </html>
