@@ -38,6 +38,20 @@ from modules.connections_store import (
 logger = logging.getLogger(__name__)
 
 
+# ==================== 统一错误响应 ====================
+
+def error_response(message, code=None, suggestion=None, status=400):
+    """
+    返回统一的 JSON 错误响应。
+    格式: {"success": false, "error": "...", "code": "...", "suggestion": "..."}
+    """
+    payload = {"success": False, "error": message}
+    if code:
+        payload["code"] = code
+    if suggestion:
+        payload["suggestion"] = suggestion
+    return jsonify(payload), status
+
 
 # --- Flask App 初始化 ---
 
@@ -52,6 +66,51 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+# ============ 请求日志 & 全局错误处理器 ============
+
+import time as _time
+from flask import g
+
+@app.before_request
+def _log_request_start():
+    """记录请求开始时间和基本信息"""
+    g.request_start = _time.time()
+    g.request_path = request.path
+    # 不记录 SSE 和长轮询（太频繁）
+    if not request.path.startswith('/api/events') and not request.path.startswith('/api/webssh/recv'):
+        logger.info(f"[REQUEST] {request.method} {request.path} — 开始")
+
+@app.after_request
+def _log_request_end(response):
+    """记录请求耗时和状态"""
+    if hasattr(g, 'request_start'):
+        duration = round((_time.time() - g.request_start) * 1000, 2)
+        # 只记录耗时超过 500ms 的请求，或错误请求
+        if duration > 500 or response.status_code >= 400:
+            logger.warning(f"[REQUEST] {g.request_path} — {response.status_code} （耗时 {duration}ms）")
+    return response
+
+@app.errorhandler(500)
+def _handle_500(e):
+    """全局 500 错误处理器：返回 JSON 而非 HTML"""
+    logger.exception("[500] 未捕获的异常")
+    return jsonify({
+        "success": False,
+        "error": "服务器内部错误，请查看日志",
+        "code": "INTERNAL_ERROR"
+    }), 500
+
+
+# 注册 WebSSH HTTP API 路由（不再使用 SocketIO）
+try:
+    from modules.webssh import register_webssh_routes, cleanup_all_sessions
+    register_webssh_routes(app)
+    logger.info("  [WebSSH] HTTP API 路由已注册")
+except Exception as e:
+    logger.warning(f"  [WebSSH] 注册失败: {e}")
+
+
 
 # SSE 消息队列 (全局，每个请求一个队列)
 _sse_queues: list[queue.Queue] = []
@@ -92,15 +151,21 @@ def index():
 
 @app.route("/api/events")
 def sse_events():
-    """SSE 事件流"""
+    """SSE 事件流（限时连接，防止占满线程）"""
     q: queue.Queue = queue.Queue(maxsize=100)
     _sse_queues.append(q)
+    _sse_start = _time.time()
+    _SSE_MAX_LIFETIME = 120  # 单次连接最多 120 秒，断开后前端自动重连
 
     def generate():
         try:
             # 发送初始连接确认
             yield f"event: connected\ndata: {json.dumps({'message': 'SSE 已连接'})}\n\n"
             while True:
+                # 超过最大生存时间，主动断开（前端 EventSource 会自动重连）
+                if _time.time() - _sse_start > _SSE_MAX_LIFETIME:
+                    yield f"event: reconnect\ndata: {json.dumps({'message': '请重连'})}\n\n"
+                    break
                 try:
                     msg = q.get(timeout=30)
                     yield msg
@@ -633,66 +698,242 @@ def delete_connection_route(conn_id):
 def connect_to_server():
     """
     一键打开终端 SSH 连接到服务器
-    平台适配: macOS → Terminal.app | Windows → wt/cmd | Linux → gnome-terminal/xterm
+    平台适配: macOS → Terminal.app/iTerm2 | Windows → wt/cmd | Linux → gnome-terminal/konsole/xterm
     """
     import shutil
     import subprocess
     import sys
+    
     data = request.get_json() or {}
     alias = data.get("alias", "").strip()
+    terminal_path = data.get("terminal_path", "").strip()
 
     if not alias:
-        return jsonify({"success": False, "error": "请指定连接别名"}), 400
+        return error_response(
+            "请指定连接别名",
+            code="INVALID_PARAM",
+            suggestion="请在「我的连接」中选择一个连接，或先添加一个新连接"
+        )
+    
+    # 校验 alias 是否在连接列表中（可选，用于更友好的错误提示）
+    try:
+        connections = load_connections()
+        matched = [c for c in connections if c.get("alias") == alias]
+        if not matched:
+            logger.warning(f"连接别名 '{alias}' 不在保存的连接列表中，但仍将尝试连接（可能是 Raw Host）")
+    except Exception:
+        pass
 
     _sse_broadcast("progress", {"message": f"正在启动 SSH 连接到 {alias} ...", "time": datetime.now().strftime("%H:%M:%S")})
+    
     try:
-
         if sys.platform == "win32":
-            import subprocess as _sp
-            terminal_path = data.get("terminal_path", "").strip()
-            success = False
-            
+            # Windows 终端启动逻辑
             def exists(path):
-                r = _sp.run(["where", path], capture_output=True, text=True)
+                if not path:
+                    return False
+                r = subprocess.run(["where", path], capture_output=True, text=True)
                 return r.returncode == 0
             
-            # 尝试用户指定的终端
+            success = False
+            
+            # 1. 尝试用户指定的终端
             if terminal_path and exists(terminal_path):
                 try:
-                    _sp.Popen([terminal_path, "ssh", alias], creationflags=_sp.CREATE_NEW_CONSOLE)
+                    subprocess.Popen([terminal_path, "ssh", alias], creationflags=subprocess.CREATE_NEW_CONSOLE)
                     success = True
-                except Exception:
+                    logger.info(f"使用指定终端启动: {terminal_path}")
+                except Exception as e:
+                    logger.warning(f"指定终端启动失败: {e}")
                     success = False
             
-            # 回退逻辑（仅当未成功时）
+            # 2. 回退到 wt.exe
+            if not success and exists("wt.exe"):
+                try:
+                    subprocess.Popen(["wt.exe", "ssh", alias], creationflags=subprocess.CREATE_NEW_CONSOLE)
+                    success = True
+                    logger.info("使用 Windows Terminal 启动")
+                except Exception as e:
+                    logger.warning(f"Windows Terminal 启动失败: {e}")
+            
+            # 3. 回退到 powershell
+            if not success and exists("powershell.exe"):
+                try:
+                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"ssh {alias}"], creationflags=subprocess.CREATE_NEW_CONSOLE)
+                    success = True
+                    logger.info("使用 PowerShell 启动")
+                except Exception as e:
+                    logger.warning(f"PowerShell 启动失败: {e}")
+            
+            # 4. 最后回退到 cmd
             if not success:
-                if exists("wt.exe"):
-                    _sp.Popen(["wt.exe", "ssh", alias], creationflags=_sp.CREATE_NEW_CONSOLE)
-                else:
-                    _sp.Popen(["cmd.exe", "/c", "start", "cmd", "/k", f"ssh {alias}"], shell=True, creationflags=_sp.CREATE_NEW_CONSOLE)
+                try:
+                    subprocess.Popen(["cmd.exe", "/c", "start", "cmd", "/k", f"ssh {alias}"], shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                    success = True
+                    logger.info("使用 CMD 启动")
+                except Exception as e:
+                    logger.error(f"CMD 启动失败: {e}")
+                    return jsonify({"success": False, "error": f"无法启动终端: {str(e)}"}), 500
+            
+            if not success:
+                return error_response(
+                    "无法找到可用的终端模拟器",
+                    code="TERMINAL_NOT_FOUND",
+                    suggestion="请安装 Windows Terminal、PowerShell 或 Git Bash，或在「本地终端设置」中手动指定终端路径"
+                )
 
         elif sys.platform == "darwin":
-            # macOS — 使用 osascript 打开 Terminal
-            script = f'tell app "Terminal" to do script "ssh {alias}; echo; echo —— 按任意键关闭窗口 ——; read"'
-            subprocess.Popen(["osascript", "-e", script])
+            # macOS 终端启动逻辑
+            logger.info(f"macOS: 尝试启动 SSH 连接 {alias}")
+            
+            # 1. 尝试使用指定的终端路径
+            if terminal_path and os.path.exists(terminal_path):
+                try:
+                    if "iTerm" in terminal_path:
+                        # iTerm2 特殊处理
+                        script = f'tell application "iTerm2" to create terminal with profile "Default" command "ssh {alias}"'
+                        subprocess.Popen(["osascript", "-e", script])
+                    else:
+                        # Terminal.app
+                        script = f'tell application "Terminal" to do script "ssh {alias}"'
+                        subprocess.Popen(["osascript", "-e", script])
+                    logger.info(f"使用指定终端启动: {terminal_path}")
+                except Exception as e:
+                    logger.warning(f"指定终端启动失败: {e}")
+            
+            # 2. 尝试使用 iTerm2 (如果已安装)
+            try:
+                if subprocess.run(["osascript", "-e", 'tell app "iTerm2" to get name'], capture_output=True).returncode == 0:
+                    script = f'tell application "iTerm2" to create terminal with profile "Default" command "ssh {alias}"'
+                    subprocess.Popen(["osascript", "-e", script])
+                    logger.info("使用 iTerm2 启动")
+                else:
+                    raise Exception("iTerm2 未运行")
+            except Exception:
+                # 3. 回退到 Terminal.app
+                try:
+                    script = f'tell application "Terminal" to do script "ssh {alias}; echo; echo \\"连接已关闭，按 Cmd+Q 退出\\""'
+                    subprocess.Popen(["osascript", "-e", script])
+                    logger.info("使用 Terminal.app 启动")
+                except Exception as e:
+                    logger.error(f"macOS 终端启动失败: {e}")
+                    return error_response(
+                        f"无法启动终端: {str(e)}",
+                        code="TERMINAL_NOT_FOUND",
+                        suggestion="请确认 Terminal.app 或 iTerm2 已安装，并且允许此应用控制终端"
+                    )
 
         else:
-            # Linux — 检测可用终端模拟器
-            if shutil.which("gnome-terminal"):
-                subprocess.Popen(["gnome-terminal", "--", "bash", "-c", f"ssh {alias}; echo; echo '—— 按回车关闭 ——'; read"])
-            elif shutil.which("x-terminal-emulator"):
-                subprocess.Popen(["x-terminal-emulator", "-e", f"bash -c 'ssh {alias}; read'"])
-            elif shutil.which("xterm"):
-                subprocess.Popen(["xterm", "-e", f"ssh {alias}; read"])
-            else:
-                return jsonify({"success": False, "error": "无法找到可用的终端模拟器，请手动执行 ssh " + alias}), 500
+            # Linux 终端启动逻辑
+            logger.info(f"Linux: 尝试启动 SSH 连接 {alias}")
+            
+            # 终端检测顺序 (按常见程度)
+            terminals = [
+                ("gnome-terminal", ["gnome-terminal", "--", "bash", "-c", f"ssh {alias}; echo; echo '连接已关闭，按回车退出'; read"]),
+                ("konsole", ["konsole", "-e", "bash", "-c", f"ssh {alias}; read"]),
+                ("xfce4-terminal", ["xfce4-terminal", "-e", f"bash -c 'ssh {alias}; read'"]),
+                ("terminator", ["terminator", "-e", f"bash -c 'ssh {alias}; read'"]),
+                ("alacritty", ["alacritty", "-e", "bash", "-c", f"ssh {alias}; read"]),
+                ("kitty", ["kitty", "+run", "bash", "-c", f"ssh {alias}; read"]),
+                ("xterm", ["xterm", "-e", f"bash -c 'ssh {alias}; read'"]),
+                ("x-terminal-emulator", ["x-terminal-emulator", "-e", f"bash -c 'ssh {alias}; read'"]),
+            ]
+            
+            success = False
+            for name, cmd in terminals:
+                if shutil.which(name):
+                    try:
+                        subprocess.Popen(cmd)
+                        logger.info(f"使用 {name} 启动")
+                        success = True
+                        break
+                    except Exception as e:
+                        logger.warning(f"{name} 启动失败: {e}")
+                        continue
+            
+            if not success:
+                # 尝试使用 xdg-terminal (跨桌面环境)
+                try:
+                    subprocess.Popen(["xdg-terminal", "--command", f"bash -c 'ssh {alias}; read'"])
+                    success = True
+                    logger.info("使用 xdg-terminal 启动")
+                except Exception:
+                    pass
+            
+            if not success:
+                return error_response(
+                    "无法找到可用的终端模拟器",
+                    code="TERMINAL_NOT_FOUND",
+                    suggestion="请安装 GNOME Terminal、Konsole 或 xterm，然后重试。\n或者手动执行: ssh " + alias
+                )
 
         _sse_broadcast("progress", {"message": f"✓ 已启动终端 SSH 连接到 {alias}", "time": datetime.now().strftime("%H:%M:%S")})
         return jsonify({"success": True, "message": f"终端已打开，正在连接 {alias}"})
 
     except Exception as e:
         logger.exception("启动终端失败")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return error_response(
+            f"启动终端失败: {str(e)}",
+            code="SSH_CONNECT_FAILED",
+            suggestion="请检查：1) SSH 密钥是否已生成并上传；2) 服务器地址是否正确；3) 网络连接是否正常"
+        )
+
+
+# ==================== 平台信息 API ====================
+
+@app.route("/api/platform-info", methods=["GET"])
+def platform_info():
+    """
+    返回当前运行平台信息。
+    用于前端根据平台显示不同的终端候选列表。
+    """
+    import sys
+    import os
+    
+    platform = sys.platform
+    info = {
+        "platform": platform,
+        "is_windows": platform == "win32",
+        "is_macos": platform == "darwin",
+        "is_linux": platform == "linux",
+        "platform_name": {
+            "win32": "Windows",
+            "darwin": "macOS",
+            "linux": "Linux"
+        }.get(platform, platform)
+    }
+    
+    # 尝试获取更详细的版本信息
+    if platform == "win32":
+        try:
+            import platform as plat
+            info["version"] = plat.version()
+            info["release"] = plat.release()
+        except Exception:
+            pass
+    elif platform == "darwin":
+        try:
+            import platform as plat
+            info["mac_version"] = plat.mac_ver()[0]
+        except Exception:
+            pass
+    elif platform == "linux":
+        try:
+            import distro
+            info["distro"] = distro.name()
+            info["distro_version"] = distro.version()
+        except ImportError:
+            # distro 未安装，尝试读取 /etc/os-release
+            try:
+                with open("/etc/os-release", "r") as f:
+                    for line in f:
+                        if line.startswith("NAME="):
+                            info["distro"] = line.split("=")[1].strip().strip('"')
+                            break
+            except Exception:
+                pass
+    
+    return jsonify(info)
 
 
 # ==================== 终端路径检测 ====================
@@ -763,14 +1004,6 @@ def create_app():
     """
     创建 Flask 应用实例。
     返回 app，供 main.py 使用。
+    （WebSSH 路由已在模块级别注册）
     """
-
-    # 注册 WebSSH HTTP API 路由（不再使用 SocketIO）
-    try:
-        from modules.webssh import register_webssh_routes, cleanup_all_sessions
-        register_webssh_routes(app)
-        logger.info("  [WebSSH] HTTP API 路由已注册")
-    except Exception as e:
-        logger.warning(f"  [WebSSH] 注册失败: {e}")
-
     return app

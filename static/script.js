@@ -3,6 +3,26 @@ let sseSource = null;
 let wipeAnimating = false;
 let logUnread = 0;
 
+// ============ Utility: Debounce & Throttle ============
+function debounce(fn, delay = 300) {
+    let timer = null;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+function throttle(fn, limit = 100) {
+    let waiting = false;
+    return function(...args) {
+        if (!waiting) {
+            fn.apply(this, args);
+            waiting = true;
+            setTimeout(() => { waiting = false; }, limit);
+        }
+    };
+}
+
 // ============ 主题切换（含对角线 wipe 动画） ============
 function initThemeToggle() {
     const btn = document.getElementById('theme-toggle-btn');
@@ -234,7 +254,19 @@ function initSSE() {
         if (btnSetupGo) btnSetupGo.disabled = false;
         loadExistingConfig();
     });
-    sseSource.onerror = () => log("连接中断", "warning");
+    sseSource.onerror = (e) => {
+        log("SSE 连接中断，3秒后自动重连...", "warning");
+        // EventSource 会自动重连，但如果是致命错误需要手动重连
+        if (sseSource && sseSource.readyState === 2) {
+            // CLOSED — 3秒后手动重连
+            setTimeout(() => {
+                if (sseSource) sseSource.close();
+                sseSource = null;
+                initSSE();
+                log("SSE 已重连", "info");
+            }, 3000);
+        }
+    };
 }
 
 // ============ 日志 ============
@@ -286,28 +318,29 @@ function updateLogBadge() {
 
 // ============ 顶栏快捷操作 ============
 async function quickGenerateEd25519() {
-    log("⚡ 快速生成 Ed25519 密钥 ...");
-    try {
-        const res = await fetch("/api/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ key_type: "ed25519", key_size: 256, comment: "user@host", save_path: "" }),
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast("Ed25519 密钥已生成并保存！", "success");
-            log("✓ Ed25519 密钥生成完成", "success");
-            // 如果当前在生成面板，刷新显示
-            if (typeof showKey === "function") showKey(data);
-            if (typeof loadServerKeySelect === "function") loadServerKeySelect();
-        } else {
-            showToast(data.error || "生成失败", "error");
-            log(data.error || "生成失败", "error");
-        }
-    } catch (err) {
-        showToast("网络错误", "error");
-        log("网络错误: " + err.message, "error");
-    }
+            log("⚡ 快速生成 Ed25519 密钥 ...");
+            try {
+                const res = await fetch("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ key_type: "ed25519", key_size: 256, comment: "user@host", save_path: "" }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast("Ed25519 密钥已生成并保存！", "success");
+                    log("✓ Ed25519 密钥生成完成", "success");
+                    // 如果当前在生成面板，刷新显示
+                    if (typeof showKey === "function") showKey(data);
+                    if (typeof loadServerKeySelect === "function") loadServerKeySelect();
+                } else {
+                    // 使用统一错误处理（自动展示建议信息）
+                    handleApiError(data, "密钥生成失败");
+                    log(data.error || "生成失败", "error");
+                }
+            } catch (err) {
+                showToast("网络请求失败: " + err.message, "error");
+                log("网络错误: " + err.message, "error");
+            }
 }
 
 function toggleAddSection() {
@@ -329,12 +362,58 @@ function toggleAddSection() {
 }
 
 // ============ Toast ============
-function showToast(msg, type = "info") {
+function showToast(msg, type = "info", suggestion = null) {
     const t = document.createElement("div");
     t.className = `toast toast-${type}`;
-    t.textContent = msg;
+    
+    // 支持富文本消息（包含建议）
+    let html = msg;
+    if (suggestion) {
+        html += `<br><small style="opacity:0.8;">💡 ${suggestion}</small>`;
+    }
+    t.innerHTML = html;
+    
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3500);
+    
+    // 不同消息类型使用不同的显示时长
+    const durations = {
+        "success": 2500,
+        "info": 3000,
+        "warning": 4000,
+        "error": 5000
+    };
+    const duration = durations[type] || 3000;
+    
+    setTimeout(() => {
+        t.style.opacity = "0";
+        t.style.transform = "translateX(100%)";
+        setTimeout(() => t.remove(), 300);
+    }, duration);
+}
+
+// 统一处理 API 错误响应
+// 自动解析 error/suggestion 并展示
+function handleApiError(response, defaultMsg = "操作失败") {
+    if (!response) {
+        showToast(defaultMsg, "error");
+        return;
+    }
+    
+    const errorMsg = response.error || defaultMsg;
+    const suggestion = response.suggestion || null;
+    const code = response.code || null;
+    
+    // 根据错误码选择提示类型
+    let toastType = "error";
+    if (code === "CONNECTION_NOT_FOUND") toastType = "warning";
+    if (code === "TERMINAL_NOT_FOUND") toastType = "warning";
+    
+    showToast(errorMsg, toastType, suggestion);
+    
+    // 如果有错误码，也在控制台输出详细信息
+    if (code) {
+        console.warn(`API 错误 [${code}]:`, errorMsg, suggestion ? `\n建议: ${suggestion}` : "");
+    }
 }
 
 // ============ 确认弹窗 ============
@@ -753,7 +832,6 @@ async function loadConnections() {
 }
 
 async function connectServer(alias, mode = 'local') {
-    alert(`[debug] connectServer called: alias=${alias}, mode=${mode}`);
     // mode: 'web' = WebSSH 浏览器终端, 'local' = 本地终端(wt.exe/Terminal)
     if (mode === 'web') {
         // WebSSH：切换到 WebSSH 面板并打开终端
@@ -1018,6 +1096,10 @@ function switchPanel(panelId) {
     if (panelId === 'panel-webssh-history' && typeof renderWebSSHHistory === 'function') {
         renderWebSSHHistory();
     }
+    // 切换到 WebSSH 面板时重新适配终端尺寸（三栏布局下尤其重要）
+    if (panelId === 'panel-webssh' && typeof _webssh_fit !== 'undefined' && _webssh_fit) {
+        setTimeout(() => { try { _webssh_fit.fit(); } catch (e) {} }, 100);
+    }
 }
 
 // ============ 初始化 ============
@@ -1108,9 +1190,14 @@ async function openLocalTerminal(alias) {
             body: JSON.stringify({ alias, terminal_path: terminalPath }),
         });
         const data = await res.json();
-        showToast(data.message, data.success ? "success" : "error");
+        if (data.success) {
+            showToast(data.message || "终端已打开", "success");
+        } else {
+            // 使用统一错误处理（自动展示建议信息）
+            handleApiError(data, "启动终端失败");
+        }
     } catch (e) {
-        showToast("请求失败: " + e.message, "error");
+        showToast("网络请求失败: " + e.message, "error");
     }
 }
 
@@ -1391,23 +1478,58 @@ async function autoDetectTerminal() {
     resultDiv.className = "path-check-result";
     resultDiv.textContent = "⏳ 检测中...";
 
-    // 常见终端路径（按优先级）
-    const candidates = [
-        // Windows Terminal
-        {name: "Windows Terminal", path: "wt.exe"},
-        {name: "Windows Terminal (商店版)", path: "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\wt.exe"},
-        // PowerShell
-        {name: "PowerShell", path: "powershell.exe"},
-        {name: "PowerShell 7", path: "pwsh.exe"},
-        // CMD
-        {name: "CMD", path: "cmd.exe"},
-        // Git Bash
-        {name: "Git Bash", path: "C:\\Program Files\\Git\\bin\\bash.exe"},
-        {name: "Git Bash (x86)", path: "C:\\Program Files (x86)\\Git\\bin\\bash.exe"},
-    ];
+    // 1. 获取当前平台信息
+    let platformInfo = {platform: "unknown", platform_name: "Unknown"};
+    try {
+        const resp = await fetch("/api/platform-info");
+        platformInfo = await resp.json();
+    } catch(e) {
+        console.warn("无法获取平台信息，使用默认检测", e);
+    }
 
+    // 2. 根据平台选择终端候选列表
+    let candidates = [];
+    const platform = platformInfo.platform;
+
+    if (platform === "win32") {
+        // Windows 终端
+        candidates = [
+            {name: "Windows Terminal", path: "wt.exe"},
+            {name: "PowerShell", path: "powershell.exe"},
+            {name: "PowerShell 7", path: "pwsh.exe"},
+            {name: "CMD", path: "cmd.exe"},
+            {name: "Git Bash", path: "C:\\Program Files\\Git\\bin\\bash.exe"},
+            {name: "Git Bash (x86)", path: "C:\\Program Files (x86)\\Git\\bin\\bash.exe"},
+        ];
+    } else if (platform === "darwin") {
+        // macOS 终端
+        candidates = [
+            {name: "Terminal.app", path: "/Applications/Utilities/Terminal.app"},
+            {name: "iTerm2", path: "/Applications/iTerm.app"},
+            {name: "Alacritty", path: "alacritty"},
+            {name: "kitty", path: "kitty"},
+        ];
+    } else if (platform === "linux") {
+        // Linux 终端
+        candidates = [
+            {name: "GNOME Terminal", path: "gnome-terminal"},
+            {name: "Konsole", path: "konsole"},
+            {name: "Xterm", path: "xterm"},
+            {name: "Alacritty", path: "alacritty"},
+            {name: "kitty", path: "kitty"},
+            {name: "Terminator", path: "terminator"},
+            {name: "xfce4-terminal", path: "xfce4-terminal"},
+        ];
+    } else {
+        // 未知平台，尝试常见终端
+        candidates = [
+            {name: "系统默认终端", path: "xterm"},
+            {name: "bash", path: "bash"},
+        ];
+    }
+
+    // 3. 检测每个候选终端
     const found = [];
-
     for (const c of candidates) {
         try {
             const resp = await fetch("/api/check-terminal-path", {
@@ -1424,18 +1546,18 @@ async function autoDetectTerminal() {
         }
     }
 
+    // 4. 显示检测结果
     if (found.length > 0) {
         resultDiv.className = "path-check-result valid";
-        let html = `✅ 检测到 ${found.length} 个终端：<br>`;
+        let html = `✅ 检测到 ${found.length} 个终端 (${platformInfo.platform_name || platform})：<br>`;
         found.forEach((t, i) => {
-            // 转义路径中的反斜杠，用于 JS 字符串字面量
-            const escapedPath = t.path.replace(/\\/g, '\\\\');
+            const escapedPath = t.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             html += `<div style="margin:6px 0; cursor:pointer; text-decoration:underline;" onclick="selectDetectedTerminal('${escapedPath}')">${t.name} <span class="detected-path">${t.path}</span></div>`;
         });
         resultDiv.innerHTML = html;
     } else {
         resultDiv.className = "path-check-result invalid";
-        resultDiv.textContent = "❌ 未检测到常见终端，请手动输入路径";
+        resultDiv.innerHTML = `❌ 未检测到常见终端<br><small>当前平台: ${platformInfo.platform_name || platform}<br>请手动输入终端路径</small>`;
     }
 }
 

@@ -485,7 +485,7 @@
                 </section>
             </div>
 
-            <!-- ===== Panel 5: WebSSH 终端 ===== -->
+            <!-- ===== Panel 5: WebSSH 终端（三栏工作台） ===== -->
             <div class="content-panel" id="panel-webssh">
                 <section class="card webssh-section">
                     <div class="webssh-header">
@@ -502,8 +502,46 @@
                     <div class="webssh-connection-info" id="websshConnInfo" style="display:none;">
                         <code id="websshConnText"></code>
                     </div>
-                    <div class="webssh-terminal-wrapper">
-                        <div id="websshTerminal"></div>
+                    <!-- 三栏布局：命令历史 | 终端 | 文件管理 -->
+                    <div class="webssh-workbench">
+                        <!-- 左栏：命令历史 -->
+                        <aside class="webssh-sidebar webssh-sidebar-left" id="websshCmdHistoryPanel">
+                            <div class="sidebar-header">
+                                <span class="sidebar-title">📜 命令历史</span>
+                                <button class="sidebar-btn" onclick="clearCmdHistory()" title="清空历史">🗑️</button>
+                            </div>
+                            <div class="sidebar-body" id="websshCmdHistoryList">
+                                <div class="sidebar-empty">连接后自动记录命令</div>
+                            </div>
+                        </aside>
+                        <!-- 中栏：终端 -->
+                        <div class="webssh-terminal-area">
+                            <div class="webssh-terminal-wrapper">
+                                <div id="websshTerminal"></div>
+                            </div>
+                        </div>
+                        <!-- 右栏：远程文件管理 -->
+                        <aside class="webssh-sidebar webssh-sidebar-right" id="websshFilePanel">
+                            <div class="sidebar-header">
+                                <span class="sidebar-title">📁 文件管理</span>
+                                <div class="sidebar-btn-group">
+                                    <button class="sidebar-btn" onclick="sftpGoUp()" title="上级目录">⬆️</button>
+                                    <button class="sidebar-btn" onclick="sftpRefresh()" title="刷新">🔄</button>
+                                    <button class="sidebar-btn" onclick="sftpNewFolder()" title="新建文件夹">📁+</button>
+                                    <button class="sidebar-btn" onclick="sftpUploadTrigger()" title="上传文件">⬆️</button>
+                                </div>
+                            </div>
+                            <!-- 面包屑导航 -->
+                            <div class="sftp-breadcrumb" id="sftpBreadcrumb">
+                                <span class="sftp-path-hint">连接后可浏览远程文件</span>
+                            </div>
+                            <!-- 文件列表 -->
+                            <div class="sidebar-body sftp-file-list" id="sftpFileList">
+                                <div class="sidebar-empty">未连接</div>
+                            </div>
+                            <!-- 隐藏的上传 input -->
+                            <input type="file" id="sftpUploadInput" style="display:none;" onchange="sftpUploadFile(this)">
+                        </aside>
                     </div>
                 </section>
             </div>
