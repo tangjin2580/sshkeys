@@ -363,7 +363,11 @@ class MainPanel:
 def _start_tray(icon_img):
     """启动系统托盘（后台线程）"""
     global _tray_icon
-    from pystray import Icon, Menu, MenuItem
+    try:
+        from pystray import Icon, Menu, MenuItem
+    except ImportError as e:
+        logger.warning(f"[主程序] pystray 不可用，系统托盘功能禁用: {e}")
+        return
 
     def _tray_open(icon, item):
         """双击托盘 → 显示主面板"""

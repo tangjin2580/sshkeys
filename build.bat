@@ -11,6 +11,13 @@ if errorlevel 1 (
     "%VENV%\Scripts\pip.exe" install pyinstaller
 )
 
+echo [BUILD] 检查关键依赖...
+"%VENV%\Scripts\python.exe" -c "import pystray; import PIL; print('  pystray + PIL OK')" || (
+    echo [BUILD] ❌ 缺少 pystray 或 PIL！请先运行: %VENV%\Scripts\pip.exe install pystray pillow
+    pause
+    exit /b 1
+)
+
 echo [BUILD] 清理旧构建...
 if exist build rmdir /s /q build
 if exist dist\SSHKeyManager rmdir /s /q "dist\SSHKeyManager"
