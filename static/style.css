@@ -851,37 +851,6 @@ html.theme-transitioning .beach {
 }
 
 /* 所有面板默认：在流中但不可见 */
-
-
-/* 静止可见状态 */
-.content-panel.active {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(0);
-    pointer-events: auto;
-}
-
-/* 滑入动画 — 从右侧滑入 + 淡入（仅进入，无退场） */
-.content-panel.panel-enter {
-    opacity: 0 !important;
-    visibility: visible !important;
-    transform: translateX(30px) !important;
-    pointer-events: none;
-    animation: slideInRight 0.30s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes slideInRight {
-    from { opacity: 0; transform: translateX(30px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-/* app-main 用 grid 叠放所有面板，高度由最高面板决定 */
-.app-main {
-    display: grid;
-    grid-template-columns: 1fr;
-    min-height: calc(100vh - var(--nav-h) - 6rem);
-}
-
-/* 所有面板默认：在流中但不可见 */
 .content-panel {
     grid-column: 1;
     grid-row: 1;
@@ -2395,7 +2364,7 @@ html:not(.dark) .webssh-terminal-wrapper:focus-within {
     border-radius: 6px;
     font-size: 0.78rem;
     margin-top: 6px;
-    animation: fadeIn 0.3s ease;
+    animation: fadeInDown 0.3s ease;
 }
 .path-check-result.valid {
     background: rgba(34, 197, 94, 0.1);
@@ -2418,7 +2387,7 @@ html:not(.dark) .webssh-terminal-wrapper:focus-within {
 .dark .path-check-result .detected-path {
     background: rgba(255,255,255,0.1);
 }
-@keyframes fadeIn {
+@keyframes fadeInDown {
     from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
 }

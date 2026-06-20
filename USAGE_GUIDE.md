@@ -5,9 +5,9 @@
 ### 方式一：双击启动（推荐）
 双击 `start.vbs` 文件即可启动，**无终端窗口**，直接在系统托盘显示图标。
 
-### 方式二：命令行启动
+### 方式二：命令行启动（调试用）
 ```bash
-venv\Scripts\pythonw.exe tray.py
+venv\Scripts\python.exe main.py --dev
 ```
 
 ## 系统托盘菜单
@@ -15,7 +15,7 @@ venv\Scripts\pythonw.exe tray.py
 启动后，在 Windows 系统托盘（右下角）会显示一个绿色钥匙图标。
 
 **右键菜单：**
-- **打开 Web 界面** — 在浏览器中打开 SSH Key Manager（默认 http://127.0.0.1:5000）
+- **打开 Web 界面** — 在浏览器中打开 SSH Key Manager（默认 http://127.0.0.1:5201）
 - **开机自启** — 勾选后开机自动启动（写入注册表，无需管理员权限）
 - **关闭程序** — 停止服务器并退出托盘应用
 
@@ -32,8 +32,9 @@ venv\Scripts\pythonw.exe tray.py
 
 ```
 start.vbs (无窗口启动)
-    └── pythonw.exe tray.py (系统托盘应用)
-            ├── 后台线程: Flask 服务器 (port 5000)
+    └── pythonw.exe main.py
+            ├── 后台线程: Waitress 服务器 (port 5201)
+            ├── tkinter GUI 主窗口
             └── 系统托盘图标 (pystray)
                     ├── 打开 Web 界面 → webbrowser.open()
                     ├── 开机自启 → winreg (HKCU\...\Run)
@@ -44,8 +45,14 @@ start.vbs (无窗口启动)
 
 | 文件 | 说明 |
 |------|------|
-| `tray.py` | 系统托盘应用主程序 |
+| `main.py` | 应用入口（GUI + 托盘 + 服务器） |
 | `start.vbs` | 无终端窗口启动脚本 |
-| `run.py` | 纯命令行启动（有终端窗口，调试用） |
-| `modules/server.py` | Flask 服务器主程序 |
-| `modules/webssh.py` | WebSSH 功能模块 |
+| `modules/server.py` | Flask 应用工厂 |
+| `modules/routes/` | API 路由蓝图 |
+| `modules/ssh_config.py` | SSH config 解析/写入 |
+| `modules/key_generator.py` | 密钥生成 |
+| `modules/key_uploader.py` | 公钥上传（GitHub/GitLab/服务器） |
+| `modules/connections_store.py` | 连接管理持久化 |
+| `modules/webssh.py` | WebSSH 终端 + SFTP |
+| `static/js/` | 前端模块化 JS |
+| `templates/index.html` | 单页应用模板 |
