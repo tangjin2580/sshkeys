@@ -1,8 +1,13 @@
-name: Build & Release
+name: Build Windows Release
 
+# 只在 push 到 main 时触发，版本 bump 提交跳过 CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'VERSION'
+      - '**.md'
+      - '.github/**'
   workflow_dispatch:
 
 permissions:
@@ -10,71 +15,35 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            artifact_name: ssh-key-manager-linux
-            binary_ext: ""
-          - os: windows-latest
-            artifact_name: ssh-key-manager-windows
-            binary_ext: .exe
-          - os: macos-latest
-            artifact_name: ssh-key-manager-macos
-            binary_ext: ""
-
+    name: Build Windows exe
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
+          pip install pystray Pillow
 
-      - name: Build with PyInstaller
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            SEP=";"
-            ICON="--icon asset/icon.ico"
-          elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            SEP=":"
-            ICON="--icon asset/icon.ico"
-          else
-            SEP=":"
-            ICON="--icon asset/icon.icns"
-          fi
-          pyinstaller --onefile --console --name ${{ matrix.artifact_name }} \
-            $ICON \
-            --add-data "templates${SEP}templates" \
-            --add-data "static${SEP}static" \
-            --hidden-import modules \
-            --hidden-import modules.server \
-            --hidden-import modules.key_generator \
-            --hidden-import modules.key_uploader \
-            --hidden-import modules.ssh_config \
-            --hidden-import modules.utils \
-            --hidden-import modules.connections_store \
-            --hidden-import waitress \
-            main.py
+      - name: Build with PyInstaller (main.spec)
+        run: pyinstaller main.spec
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.artifact_name }}${{ matrix.binary_ext }}
+          name: SSHKeyManager-windows
+          path: dist/SSHKeyManager/**
 
   release:
-    name: Create Release
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -84,40 +53,44 @@ jobs:
 
       - name: Read current version
         id: version
+        shell: bash
         run: |
           VER=$(cat VERSION | tr -d '[:space:]')
           echo "current=$VER" >> $GITHUB_OUTPUT
 
       - name: Bump patch version
         id: bump
+        shell: bash
         run: |
           IFS='.' read -r MAJ MIN PAT <<< "${{ steps.version.outputs.current }}"
           NEW="$MAJ.$MIN.$((PAT + 1))"
           echo "new=$NEW" >> $GITHUB_OUTPUT
 
       - name: Update VERSION file
-        run: |
-          echo "${{ steps.bump.outputs.new }}" > VERSION
+        shell: bash
+        run: echo "${{ steps.bump.outputs.new }}" > VERSION
 
-      - name: Commit version bump
+      - name: Commit version bump (skip CI)
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add VERSION
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }}" || true
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || true
           git push || true
 
-      - name: Download all artifacts
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: SSHKeyManager-windows
+          path: dist/SSHKeyManager
 
-      - name: Prepare release assets
+      - name: Zip release asset
+        shell: bash
         run: |
-          mkdir -p release
-          cp artifacts/ssh-key-manager-linux/ssh-key-manager-linux release/
-          cp artifacts/ssh-key-manager-windows/ssh-key-manager-windows.exe release/
-          cp artifacts/ssh-key-manager-macos/ssh-key-manager-macos release/
+          cd dist
+          zip -r ../SSHKeyManager-v${{ steps.bump.outputs.new }}-windows.zip SSHKeyManager/
+          cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -127,28 +100,19 @@ jobs:
           body: |
             ## 🚀 SSH Key Manager v${{ steps.bump.outputs.new }}
 
-            自动构建于 `${{ github.sha }}`
+            > 自动构建于 `${{ github.sha }}`
 
             ### 下载
-            | 平台 | 文件 |
-            |---|---|
-            | 🐧 Linux | `ssh-key-manager-linux` |
-            | 🪟 Windows | `ssh-key-manager-windows.exe` |
-            | 🍎 macOS | `ssh-key-manager-macos` |
+            - **Windows**：下载 `SSHKeyManager-v${{ steps.bump.outputs.new }}-windows.zip`，解压后运行 `SSHKeyManager.exe`
 
-            ### 使用
-            ```bash
-            # macOS / Linux
-            chmod +x ssh-key-manager-*
-            ./ssh-key-manager-*
+            ### 安装依赖（打包环境）
             ```
-            ```cmd
-            REM Windows
-            ssh-key-manager-windows.exe
+            pip install flask waitress paramiko cryptography requests pystray Pillow
             ```
+
+            ### 更新日志
+            详见 [Commits](https://github.com/${{ github.repository }}/commits/main)
           files: |
-            release/ssh-key-manager-linux
-            release/ssh-key-manager-windows.exe
-            release/ssh-key-manager-macos
+            SSHKeyManager-v${{ steps.bump.outputs.new }}-windows.zip
           draft: false
           prerelease: false
