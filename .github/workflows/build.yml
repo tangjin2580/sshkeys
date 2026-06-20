@@ -113,47 +113,48 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: release
 
-      - name: Prepare release assets
+      - name: Prepare release assets (direct executable)
         shell: bash
         run: |
-          mkdir -p release
           VER="v${{ steps.bump.outputs.new }}"
+          echo "=== release contents ==="
+          find release/ -type f | head -20
 
-          # Windows: single .exe → zip
-          WIN_EXE="artifacts/ssh-key-manager-windows/ssh-key-manager-windows.exe"
+          # Windows: 重命名为带版本号的文件名
+          WIN_EXE="release/ssh-key-manager-windows/ssh-key-manager-windows.exe"
           if [ -f "$WIN_EXE" ]; then
-            zip -j "release/ssh-key-manager-windows-${VER}.zip" "$WIN_EXE"
-            echo "✅ Windows asset prepared"
+            mv "$WIN_EXE" "release/ssh-key-manager-windows-${VER}.exe"
+            echo "✅ Windows: release/ssh-key-manager-windows-${VER}.exe"
           else
-            echo "❌ Windows exe not found at $WIN_EXE"
-            find artifacts/ -type f | head -20
+            echo "❌ Windows exe not found"
+            exit 1
           fi
 
-          # Linux: single binary → zip
-          LIN_BIN="artifacts/ssh-key-manager-linux/ssh-key-manager-linux"
+          # Linux: 重命名为带版本号的文件名
+          LIN_BIN="release/ssh-key-manager-linux/ssh-key-manager-linux"
           if [ -f "$LIN_BIN" ]; then
             chmod +x "$LIN_BIN"
-            zip -j "release/ssh-key-manager-linux-${VER}.zip" "$LIN_BIN"
-            echo "✅ Linux asset prepared"
+            mv "$LIN_BIN" "release/ssh-key-manager-linux-${VER}"
+            echo "✅ Linux: release/ssh-key-manager-linux-${VER}"
           else
-            echo "❌ Linux binary not found at $LIN_BIN"
-            find artifacts/ -type f | head -20
+            echo "❌ Linux binary not found"
+            exit 1
           fi
 
-          # macOS: single binary → zip
-          MAC_BIN="artifacts/ssh-key-manager-macos/ssh-key-manager-macos"
+          # macOS: 重命名为带版本号的文件名
+          MAC_BIN="release/ssh-key-manager-macos/ssh-key-manager-macos"
           if [ -f "$MAC_BIN" ]; then
             chmod +x "$MAC_BIN"
-            zip -j "release/ssh-key-manager-macos-${VER}.zip" "$MAC_BIN"
-            echo "✅ macOS asset prepared"
+            mv "$MAC_BIN" "release/ssh-key-manager-macos-${VER}"
+            echo "✅ macOS: release/ssh-key-manager-macos-${VER}"
           else
-            echo "❌ macOS binary not found at $MAC_BIN"
-            find artifacts/ -type f | head -20
+            echo "❌ macOS binary not found"
+            exit 1
           fi
 
-          echo "=== release assets ==="
+          echo "=== final release assets ==="
           ls -la release/
 
       - name: Create GitHub Release
@@ -169,16 +170,19 @@ jobs:
             ### 下载
             | 平台 | 文件 |
             |---|---|
-            | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.bump.outputs.new }}.zip` |
-            | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.zip` |
-            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip` |
+            | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.bump.outputs.new }}` |
+            | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe` |
+            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}` |
 
             ### 使用
             ```bash
-            # 解压对应平台的 zip，运行可执行文件
-            # Windows: 解压后双击 ssh-key-manager-windows.exe
+            # 直接下载运行，无需解压
+            # Windows: 双击 ssh-key-manager-windows-*.exe
             # Linux/macOS: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
             ```
-          files: release/*.zip
+          files: |
+            release/ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe
+            release/ssh-key-manager-linux-v${{ steps.bump.outputs.new }}
+            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}
           draft: false
           prerelease: false
