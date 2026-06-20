@@ -142,7 +142,30 @@ def _wait_for_port(timeout: float = 15.0) -> bool:
 # ==================== 图标生成 ====================
 
 def _create_icon_image():
-    """用 PIL 生成绿色钥匙图标，PIL 不可用时返回 None"""
+    """
+    优先从 asset/icon.ico 加载图标（与 exe 图标一致），
+    PyInstaller 打包后资源在 sys._MEIPASS 下。
+    加载失败则用 PIL 生成绿色钥匙图标兜底。
+    """
+    # 1. 尝试从文件加载
+    try:
+        from PIL import Image
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            base = Path(sys._MEIPASS)
+        else:
+            base = ROOT_DIR
+        icon_path = base / "asset" / "icon.ico"
+        if icon_path.exists():
+            img = Image.open(icon_path)
+            if img.mode not in ("RGBA", "RGB"):
+                img = img.convert("RGBA")
+            if img.size != (64, 64):
+                img = img.resize((64, 64), Image.LANCZOS)
+            return img
+    except Exception:
+        pass
+
+    # 2. 兜底：PIL 生成绿色钥匙图标
     try:
         from PIL import Image, ImageDraw
     except Exception:

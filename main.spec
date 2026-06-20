@@ -10,13 +10,21 @@ from pathlib import Path
 
 block_cipher = None
 
-# 平台对应的输出文件名
+# 平台对应的输出文件名和图标
 if sys.platform == 'win32':
     exe_name = 'ssh-key-manager-windows'
+    app_icon = 'asset/icon.ico'
 elif sys.platform == 'darwin':
     exe_name = 'ssh-key-manager-macos'
+    app_icon = 'asset/icon.icns'
 else:
     exe_name = 'ssh-key-manager-linux'
+    app_icon = None  # Linux bootloader 不支持图标
+
+# 图标文件不存在时降级为 None（避免打包报错）
+import os
+if app_icon is not None and not os.path.exists(app_icon):
+    app_icon = None
 
 a = Analysis(
     ['main.py'],
@@ -27,6 +35,8 @@ a = Analysis(
         ('static', 'static'),
         ('modules', 'modules'),
         ('VERSION', '.'),
+        ('asset/icon.ico', 'asset'),
+        ('asset/icon.icns', 'asset'),
     ],
     hiddenimports=[
         'tkinter',
@@ -80,5 +90,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=app_icon,
 )
