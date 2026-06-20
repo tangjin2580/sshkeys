@@ -21,20 +21,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            artifact_name: ssh-key-manager-linux
-            separator: ":"
-            icon: "asset/icon.png"
-            exe_ext: ""
+            platform: linux
           - os: windows-latest
-            artifact_name: ssh-key-manager-windows
-            separator: ";"
-            icon: "asset/icon.ico"
-            exe_ext: ".exe"
+            platform: windows
           - os: macos-latest
-            artifact_name: ssh-key-manager-macos
-            separator: ":"
-            icon: "asset/icon.icns"
-            exe_ext: ""
+            platform: macos
 
     steps:
       - uses: actions/checkout@v4
@@ -49,50 +40,37 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+          pip install pyinstaller -r requirements.txt
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (single file)
         shell: bash
         run: |
-          SEP="${{ matrix.separator }}"
-          ICON="${{ matrix.icon }}"
-          # PyInstaller 命令：--windowed 替代 --console（无黑框）
-          pyinstaller \
-            --onedir \
-            --windowed \
-            --icon "$ICON" \
-            --name "${{ matrix.artifact_name }}" \
-            --add-data "templates${SEP}templates" \
-            --add-data "static${SEP}static" \
-            --add-data "VERSION${SEP}VERSION" \
-            --hidden-import "pystray" \
-            --hidden-import "pystray._unix" \
-            --hidden-import "pystray._win32" \
-            --hidden-import "PIL" \
-            --hidden-import "PIL.Image" \
-            --hidden-import "PIL.ImageDraw" \
-            --hidden-import "PIL.ImageTk" \
-            --hidden-import "PIL.ImageFont" \
-            --hidden-import "PIL.ImageColor" \
-            --hidden-import "tkinter" \
-            --hidden-import "tkinter.ttk" \
-            --hidden-import "waitress" \
-            --hidden-import "flask" \
-            --hidden-import "paramiko" \
-            --hidden-import "cryptography" \
-            --hidden-import "bcrypt" \
-            --hidden-import "nacl" \
-            --hidden-import "requests" \
-            --collect-all "pystray" \
-            --collect-all "Pillow" \
-            main.py
+          pyinstaller main.spec
 
-      - name: Upload artifact
+      - name: Verify build output
+        shell: bash
+        run: |
+          echo "=== dist contents ==="
+          ls -la dist/
+          EXPECTED="ssh-key-manager-${{ matrix.platform }}"
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            EXPECTED="${EXPECTED}.exe"
+          fi
+          if [ -f "dist/${EXPECTED}" ]; then
+            echo "✅ Single file build succeeded: dist/${EXPECTED}"
+            file dist/${EXPECTED} || true
+          else
+            echo "❌ Expected file not found: dist/${EXPECTED}"
+            echo "=== full dist listing ==="
+            find dist/ -type f | head -50
+            exit 1
+          fi
+
+      - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.artifact_name }}${{ matrix.exe_ext }}
+          name: ssh-key-manager-${{ matrix.platform }}
+          path: dist/ssh-key-manager-${{ matrix.platform }}${{ matrix.platform == 'windows' && '.exe' || '' }}
           if-no-files-found: error
 
   release:
@@ -123,42 +101,59 @@ jobs:
         shell: bash
         run: echo "${{ steps.bump.outputs.new }}" > VERSION
 
-      - name: Commit version bump (skip CI)
+      - name: Commit version bump
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add VERSION
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || true
-          git push || true
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || echo "No changes to commit"
+          git push || echo "Push failed, may already be pushed"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Prepare release assets (zip each platform)
+      - name: Prepare release assets
         shell: bash
         run: |
           mkdir -p release
-          # Linux: 压缩目录为 zip
-          if [ -d "artifacts/ssh-key-manager-linux" ]; then
-            cd artifacts/ssh-key-manager-linux
-            zip -r ../../release/ssh-key-manager-linux-v${{ steps.bump.outputs.new }}.zip .
-            cd ../../artifacts
+          VER="v${{ steps.bump.outputs.new }}"
+
+          # Windows: single .exe → zip
+          WIN_EXE="artifacts/ssh-key-manager-windows/ssh-key-manager-windows.exe"
+          if [ -f "$WIN_EXE" ]; then
+            zip -j "release/ssh-key-manager-windows-${VER}.zip" "$WIN_EXE"
+            echo "✅ Windows asset prepared"
+          else
+            echo "❌ Windows exe not found at $WIN_EXE"
+            find artifacts/ -type f | head -20
           fi
-          # Windows: 压缩目录为 zip
-          if [ -d "artifacts/ssh-key-manager-windows" ]; then
-            cd artifacts/ssh-key-manager-windows
-            zip -r ../../release/ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.zip .
-            cd ../../artifacts
+
+          # Linux: single binary → zip
+          LIN_BIN="artifacts/ssh-key-manager-linux/ssh-key-manager-linux"
+          if [ -f "$LIN_BIN" ]; then
+            chmod +x "$LIN_BIN"
+            zip -j "release/ssh-key-manager-linux-${VER}.zip" "$LIN_BIN"
+            echo "✅ Linux asset prepared"
+          else
+            echo "❌ Linux binary not found at $LIN_BIN"
+            find artifacts/ -type f | head -20
           fi
-          # macOS: 压缩目录为 zip
-          if [ -d "artifacts/ssh-key-manager-macos" ]; then
-            cd artifacts/ssh-key-manager-macos
-            zip -r ../../release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip .
-            cd ../../artifacts
+
+          # macOS: single binary → zip
+          MAC_BIN="artifacts/ssh-key-manager-macos/ssh-key-manager-macos"
+          if [ -f "$MAC_BIN" ]; then
+            chmod +x "$MAC_BIN"
+            zip -j "release/ssh-key-manager-macos-${VER}.zip" "$MAC_BIN"
+            echo "✅ macOS asset prepared"
+          else
+            echo "❌ macOS binary not found at $MAC_BIN"
+            find artifacts/ -type f | head -20
           fi
+
+          echo "=== release assets ==="
           ls -la release/
 
       - name: Create GitHub Release
@@ -181,7 +176,7 @@ jobs:
             ### 使用
             ```bash
             # 解压对应平台的 zip，运行可执行文件
-            # Windows: 解压后运行 ssh-key-manager-windows.exe
+            # Windows: 解压后双击 ssh-key-manager-windows.exe
             # Linux/macOS: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
             ```
           files: release/*.zip
