@@ -142,8 +142,11 @@ def _wait_for_port(timeout: float = 15.0) -> bool:
 # ==================== 图标生成 ====================
 
 def _create_icon_image():
-    """用 PIL 生成绿色钥匙图标"""
-    from PIL import Image, ImageDraw
+    """用 PIL 生成绿色钥匙图标，PIL 不可用时返回 None"""
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:
+        return None
 
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -253,8 +256,9 @@ class MainPanel:
         # 图标
         try:
             self.icon_img = _create_icon_image()
-            self.tk_icon = _icon_to_tk_photo(self.icon_img)
-            self.root.iconphoto(False, self.tk_icon)
+            if self.icon_img is not None:
+                self.tk_icon = _icon_to_tk_photo(self.icon_img)
+                self.root.iconphoto(False, self.tk_icon)
         except Exception:
             pass
 
