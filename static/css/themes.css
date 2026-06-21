@@ -1,0 +1,508 @@
+/* ============================================================
+   themes.css — 主题变量、深浅色背景、过渡动画
+   ============================================================ */
+
+/* CSS Houdini 自定义属性 — 用于海浪波形动画 */
+@property --cp {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 100%;
+}
+
+:root {
+    /* 品牌色 */
+    --primary: #64a19d;
+    --primary-rgb: 100, 161, 157;
+    --primary-dark: #4a827e;
+    --primary-light: rgba(100, 161, 157, 0.15);
+
+    --success: #67c29c;
+    --success-dark: #4d9f7a;
+    --danger: #dc3545;
+    --danger-dark: #c82333;
+    --warning: #e4c662;
+    --info: #1cabc4;
+
+    /* 暗色背景（默认黑夜） */
+    --bg: #0a0a1a;
+    --bg-gradient: linear-gradient(180deg, #0a0a1a 0%, #111130 40%, #0d0d22 100%);
+    --bg-card: rgba(255, 255, 255, 0.06);
+    --bg-card-hover: rgba(255, 255, 255, 0.09);
+    --bg-input: rgba(255, 255, 255, 0.08);
+    --bg-muted: rgba(255, 255, 255, 0.04);
+    --bg-light-section: #f8f9fa;
+
+    /* 文字 */
+    --text: #ffffff;
+    --text-body: rgba(255, 255, 255, 0.85);
+    --text-secondary: rgba(255, 255, 255, 0.5);
+    --text-muted: rgba(255, 255, 255, 0.35);
+    --text-dark: #212529;
+    --text-dark-secondary: rgba(0, 0, 0, 0.5);
+
+    /* 边框 */
+    --border: rgba(255, 255, 255, 0.1);
+    --border-hover: rgba(255, 255, 255, 0.18);
+    --border-focus: #64a19d;
+    --border-light: #dee2e6;
+
+    /* 阴影 */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.5);
+
+    /* 圆角 */
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 1rem;
+
+    /* 导航栏玻璃 */
+    --nav-glass-bg: rgba(10, 10, 26, 0.35);
+    --nav-glass-border-color: rgba(255, 255, 255, 0.12);
+
+    /* 动画 */
+    --transition: 0.2s ease;
+    --transition-standard: 0.3s ease;
+    --theme-transition: 0.5s ease;
+
+    /* 字体 */
+    --font-heading: 'Varela Round', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+
+    /* 布局 */
+    --sidebar-w: 80px;
+    --nav-h: 56px;
+}
+
+/* ============================================================
+   Ionicons 基础样式（全本地，无需外部 CSS）
+   ============================================================ */
+ion-icon {
+    display: inline-block;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    contain: strict;
+}
+ion-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ============================================================
+   亮色模式 — 浅蓝天空渐变 + 暖橙阳光
+   ============================================================ */
+[data-theme="light"] {
+    --bg: #fef9f0;
+    --bg-gradient: linear-gradient(180deg,
+        #c9e4f7 0%,
+        #dceefb 18%,
+        #fdf4e3 50%,
+        #ffe4c4 78%,
+        #ffecd2 100%);
+    --bg-card: rgba(255, 255, 255, 0.78);
+    --bg-card-hover: rgba(255, 255, 255, 0.94);
+    --bg-input: rgba(0, 0, 0, 0.04);
+    --bg-muted: rgba(0, 0, 0, 0.03);
+    --bg-light-section: #ffffff;
+
+    --text: #2d1f0e;
+    --text-body: rgba(45, 31, 14, 0.82);
+    --text-secondary: rgba(45, 31, 14, 0.52);
+    --text-muted: rgba(45, 31, 14, 0.32);
+    --text-dark: #2d1f0e;
+    --text-dark-secondary: rgba(45, 31, 14, 0.48);
+
+    --border: rgba(0, 0, 0, 0.08);
+    --border-hover: rgba(0, 0, 0, 0.16);
+
+    --shadow-sm: 0 0.125rem 0.25rem rgba(139, 100, 40, 0.08);
+    --shadow-md: 0 0.5rem 1rem rgba(139, 100, 40, 0.1);
+    --shadow-lg: 0 1rem 3rem rgba(139, 100, 40, 0.12);
+
+    --nav-glass-bg: rgba(255, 255, 255, 0.32);
+    --nav-glass-border-color: rgba(200, 170, 120, 0.18);
+
+    --danger: #cb4335;
+    --danger-dark: #a93226;
+}
+
+/* ============================================================
+   星空背景（黑夜模式）
+   ============================================================ */
+.starfield {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+html.dark .starfield { opacity: 1; }
+
+.starfield::before {
+    content: '';
+    position: absolute;
+    width: 2px; height: 2px;
+    top: 3%; left: 7%;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow:
+        55px 12px 0 rgba(255,255,255,.9),    118px 34px 0 rgba(255,255,255,.7),
+        210px 8px 0 rgba(255,255,255,.8),    340px 55px 0 rgba(255,255,255,.6),
+        480px 18px 0 rgba(255,255,255,.75),  620px 40px 0 rgba(255,255,255,.55),
+        780px 5px 0 rgba(255,255,255,.85),   920px 28px 0 rgba(255,255,255,.65),
+        1050px 15px 0 rgba(255,255,255,.7),  1200px 50px 0 rgba(255,255,255,.5),
+        80px 90px 0 rgba(255,255,255,.6),    190px 110px 0 rgba(255,255,255,.8),
+        310px 95px 0 rgba(255,255,255,.65),  450px 120px 0 rgba(255,255,255,.55),
+        570px 85px 0 rgba(255,255,255,.7),   710px 105px 0 rgba(255,255,255,.6),
+        850px 130px 0 rgba(255,255,255,.5),  990px 80px 0 rgba(255,255,255,.75),
+        150px 170px 0 rgba(255,255,255,.7),  280px 200px 0 rgba(255,255,255,.55),
+        410px 165px 0 rgba(255,255,255,.8),  540px 190px 0 rgba(255,255,255,.6),
+        670px 175px 0 rgba(255,255,255,.5),  800px 210px 0 rgba(255,255,255,.7),
+        940px 155px 0 rgba(255,255,255,.65), 1080px 185px 0 rgba(255,255,255,.55),
+        40px 240px 0 rgba(255,255,255,.5),   170px 270px 0 rgba(255,255,255,.7),
+        330px 250px 0 rgba(255,255,255,.6),  490px 280px 0 rgba(255,255,255,.5),
+        650px 250px 0 rgba(255,255,255,.65), 770px 270px 0 rgba(255,255,255,.55),
+        910px 240px 0 rgba(255,255,255,.7),  1040px 260px 0 rgba(255,255,255,.5),
+        100px 320px 0 rgba(255,255,255,.6),  260px 340px 0 rgba(255,255,255,.5),
+        420px 330px 0 rgba(255,255,255,.55), 580px 350px 0 rgba(255,255,255,.65),
+        740px 320px 0 rgba(255,255,255,.5),  880px 340px 0 rgba(255,255,255,.6),
+        1020px 310px 0 rgba(255,255,255,.5), 1150px 330px 0 rgba(255,255,255,.55);
+}
+
+/* 星星闪烁动画 */
+@keyframes twinkle {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* ============================================================
+   白云背景（白天模式可见）
+   ============================================================ */
+.cloudfield {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+}
+html:not(.dark) .cloudfield { opacity: 1; }
+
+.cloudfield::before {
+    content: '';
+    position: absolute;
+    width: 120px; height: 50px;
+    top: 8%; left: 5%;
+    background: rgba(255,255,255,0.7);
+    border-radius: 50px;
+    box-shadow:
+        -40px 15px 0 10px rgba(255,255,255,0.65),
+        50px -10px 0 20px rgba(255,255,255,0.6),
+        110px 5px 0 8px rgba(255,255,255,0.55),
+        180px 25px 0 12px rgba(255,255,255,0.5),
+        260px 0 0 15px rgba(255,255,255,0.55),
+        340px 30px 0 10px rgba(255,255,255,0.45),
+        430px -5px 0 18px rgba(255,255,255,0.5),
+        520px 20px 0 14px rgba(255,255,255,0.4);
+    animation: cloud-drift 28s linear infinite;
+}
+.cloudfield::after {
+    content: '';
+    position: absolute;
+    width: 100px; height: 40px;
+    top: 35%; left: 70%;
+    background: rgba(255,255,255,0.6);
+    border-radius: 40px;
+    box-shadow:
+        -50px -8px 0 12px rgba(255,255,255,0.55),
+        30px -15px 0 18px rgba(255,255,255,0.5),
+        90px 10px 0 10px rgba(255,255,255,0.45),
+        -80px 30px 0 8px rgba(255,255,255,0.4),
+        160px 5px 0 14px rgba(255,255,255,0.4),
+        250px -10px 0 16px rgba(255,255,255,0.35);
+    animation: cloud-drift 35s linear infinite reverse;
+}
+
+@keyframes cloud-drift {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(60px); }
+}
+
+/* ============================================================
+   圆形扩散 Wipe 过渡遮罩（从切换按钮处放大）
+   ============================================================ */
+.theme-wipe {
+    position: fixed;
+    inset: 0;
+    z-index: 9997;
+    pointer-events: none;
+    /* 初始：半径为 0 的圆，JS 会动态设置圆心位置 */
+    clip-path: circle(0 at 0 0);
+    transition: clip-path 0s;
+    /* 纯色半透明遮罩，减弱80%深度 */
+    background: rgba(10, 10, 26, 0.19);
+}
+
+/* ============================================================
+   主题过渡
+   ============================================================ */
+.app-nav, .app-main,
+.card, .key-item, .config-entry, .conn-card,
+.form-input, .form-select, .btn-outline,
+.log-box, .modal-card {
+    transition: background 0.5s ease, border-color 0.5s ease, color 0.5s ease, box-shadow 0.5s ease;
+}
+body { transition: background 0.5s ease, color 0.5s ease; }
+
+/* 主题切换时的平滑过渡 */
+html.theme-transitioning,
+html.theme-transitioning body,
+html.theme-transitioning .app-nav,
+html.theme-transitioning .app-main,
+html.theme-transitioning .card,
+html.theme-transitioning .key-item,
+html.theme-transitioning .config-entry,
+html.theme-transitioning .conn-card,
+html.theme-transitioning .form-input,
+html.theme-transitioning .form-select,
+html.theme-transitioning .btn-outline,
+html.theme-transitioning .log-box,
+html.theme-transitioning .modal-card,
+html.theme-transitioning .starfield,
+html.theme-transitioning .cloudfield,
+html.theme-transitioning .beach {
+    transition: background-color var(--theme-transition-duration, 0.8s) ease-in-out,
+                color var(--theme-transition-duration, 0.8s) ease-in-out,
+                border-color var(--theme-transition-duration, 0.8s) ease-in-out,
+                box-shadow var(--theme-transition-duration, 0.8s) ease-in-out !important;
+}
+
+/* ============================================================
+   动画
+   ============================================================ */
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes scaleIn { from{transform:scale(.95);opacity:0} to{transform:scale(1);opacity:1} }
+@keyframes slideIn { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+/* ============================================================
+   海滩海浪背景（白天模式可见）
+   ============================================================ */
+.beach {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+    overflow: hidden;
+    pointer-events: none;
+}
+html:not(.dark) .beach { opacity: 1; }
+
+/* 海滩渐变：深蓝绿 → 暖沙色 */
+html:not(.dark) .beach {
+    background: linear-gradient(
+        to right,
+        #004a44 0%,
+        #03615b 5.26%,
+        #0a6c66 10.53%,
+        #027c73 15.79%,
+        #028a7f 21.05%,
+        #059c8e 26.32%,
+        #39a997 31.58%,
+        #4aae9f 36.84%,
+        #84b7a2 42.11%,
+        #b5aa8c 47.37%,
+        #dbb89b 52.63%,
+        #edc1a8 57.89%,
+        #fed0b2 63.16%,
+        #fddbc2 68.42%,
+        #fedfc7 73.68%,
+        #fee6d3 78.95%,
+        #fee1d1 94.74%,
+        #fcdecd 100%
+    );
+}
+
+.beach .wave {
+    --_wave-shape-duration: 10s;
+    --_wave-shape-delay: 0s;
+    --_wave-move-duration: calc(var(--_wave-shape-duration) * .75);
+    --_wave-move-delay: 0s;
+    --_wave-spray-duration: var(--_wave-move-duration);
+    --_wave-spray-delay: var(--_wave-move-delay);
+    --_cp-factor: 1.0;
+    --_cp: calc(var(--cp) * var(--_cp-factor));
+    --_center: 50%;
+    --_width: 50%;
+    --_shape-line-p-x: 96%;
+    --_shape-line-p-y: 0%;
+    --_shape-curve-p-x: 87%;
+    --_shape-curve-p-y: 40%;
+    --_shape-curve-c-x: var(--_cp);
+    --_shape-curve-c-y: 22%;
+    --_shape-smooth-p-x: 84%;
+    --_shape-smooth-p-y: 100%;
+    --_opacity-min: 0.45;
+    --_opacity-max: 1.00;
+    --_spray-scale-min: 0.25;
+    --_spray-scale-max: 0.90;
+    position: absolute;
+    left: calc(var(--_center) - var(--_width));
+    width: var(--_width);
+    height: 100%;
+    background:
+        linear-gradient(to right, rgba(0,0,0, 0.00) 70%, rgba(255,255,255, 0.44)  90%),
+        linear-gradient(to right, rgba(0,0,0, 0.00)  0%, rgba(  0,255,224, 0.15) 100%);
+    clip-path: shape(
+        from 0% 0%,
+        line to var(--_shape-line-p-x) var(--_shape-line-p-y),
+        curve to var(--_shape-curve-p-x) var(--_shape-curve-p-y) with var(--_shape-curve-c-x) var(--_shape-curve-c-y) from origin,
+        smooth to var(--_shape-smooth-p-x) var(--_shape-smooth-p-y),
+        line to 0% 100%,
+        close
+    );
+    animation:
+        beach-wave-move-animation var(--_wave-move-duration) infinite ease-in-out,
+        beach-wave-shape-animation var(--_wave-shape-duration) infinite ease-in-out;
+    animation-delay:
+        var(--_wave-move-delay),
+        var(--_wave-shape-delay);
+    will-change: transform, opacity;
+}
+
+.beach .wave i { display: none; }
+
+@supports (z-index: sibling-index()) and (z-index: sibling-count()) {
+    .beach .wave i {
+        --_i: sibling-index();
+        --_l: sibling-count();
+        --_offset-distance-min: 0%;
+        --_offset-distance-max: 100%;
+        display: block;
+        position: absolute;
+        offset-path: shape(
+            from var(--_shape-line-p-x) var(--_shape-line-p-y),
+            curve to var(--_shape-curve-p-x) var(--_shape-curve-p-y) with var(--_shape-curve-c-x) var(--_shape-curve-c-y) from origin,
+            smooth to var(--_shape-smooth-p-x) var(--_shape-smooth-p-y)
+        );
+        offset-distance: calc(var(--_offset-distance-min) + (var(--_i) - 1) / (var(--_l) - 1) * (var(--_offset-distance-max) - var(--_offset-distance-min)));
+        width: 16rem;
+        aspect-ratio: 1 / 1;
+        transform-origin: center left;
+        background: radial-gradient(closest-side, rgba(255,255,255, 0.65) 0%, rgba(255,255,255, 0.00) 100%);
+        will-change: transform, opacity;
+        animation: beach-wave-spray-animation var(--_wave-spray-duration) infinite ease-in-out;
+        animation-delay: var(--_wave-spray-delay);
+    }
+}
+
+/* 四层波浪差异化配置 */
+.beach .wave.wave--1 {
+    --_wave-shape-duration: 10s;
+    --_wave-shape-delay: 0s;
+    --_wave-move-duration: calc(var(--_wave-shape-duration) * .75);
+    --_wave-move-delay: 0s;
+    --_cp-factor: 1.0;
+    --_width: 50%;
+    --_shape-line-p-x: 96%;
+    --_shape-curve-p-x: 87%;
+    --_shape-curve-p-y: 40%;
+    --_shape-smooth-p-x: 84%;
+    --_shape-smooth-p-y: 100%;
+    --_spray-scale-min: 0.25;
+    --_spray-scale-max: 0.90;
+}
+.beach .wave.wave--2 {
+    --_wave-shape-duration: 11s;
+    --_wave-shape-delay: -2s;
+    --_wave-move-duration: calc(var(--_wave-shape-duration) * .80);
+    --_wave-move-delay: -2s;
+    --_cp-factor: 0.9;
+    --_width: 40%;
+    --_shape-line-p-x: 100%;
+    --_shape-curve-p-x: 77%;
+    --_shape-curve-p-y: 50%;
+    --_shape-smooth-p-x: 70%;
+    --_shape-smooth-p-y: 100%;
+    --_spray-scale-min: 0.20;
+    --_spray-scale-max: 0.95;
+}
+.beach .wave.wave--3 {
+    --_wave-shape-duration: 14s;
+    --_wave-shape-delay: -4s;
+    --_wave-move-duration: calc(var(--_wave-shape-duration) * .88);
+    --_wave-move-delay: -4s;
+    --_cp-factor: 0.95;
+    --_width: 30%;
+    --_shape-line-p-x: 80%;
+    --_shape-curve-p-x: 92%;
+    --_shape-curve-p-y: 55%;
+    --_shape-smooth-p-x: 44%;
+    --_shape-smooth-p-y: 100%;
+    --_spray-scale-min: 0.34;
+    --_spray-scale-max: 0.88;
+}
+.beach .wave.wave--4 {
+    --_wave-shape-duration: 13s;
+    --_wave-shape-delay: -6s;
+    --_wave-move-duration: calc(var(--_wave-shape-duration) * .78);
+    --_wave-move-delay: -6s;
+    --_cp-factor: 0.85;
+    --_width: 45%;
+    --_shape-line-p-x: 93%;
+    --_shape-curve-p-x: 85%;
+    --_shape-curve-p-y: 39%;
+    --_shape-smooth-p-x: 81%;
+    --_shape-smooth-p-y: 100%;
+    --_spray-scale-min: 0.55;
+    --_spray-scale-max: 0.98;
+}
+
+/* 海浪关键帧 */
+@keyframes beach-wave-shape-animation {
+    50% { --cp: 70%; }
+}
+@keyframes beach-wave-move-animation {
+    0%, 100% {
+        transform: translateX(0%);
+        opacity: var(--_opacity-min);
+    }
+    50% {
+        transform: translateX(var(--_center));
+        opacity: var(--_opacity-max);
+    }
+}
+@keyframes beach-wave-spray-animation {
+    0%, 100% {
+        opacity: 0.25;
+        transform: scale(var(--_spray-scale-min));
+    }
+    50% {
+        opacity: 1.00;
+        transform: scale(var(--_spray-scale-max));
+    }
+}
+
+/* ============================================================
+   无障碍：禁用动画（用户偏好）
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .starfield,
+    .cloudfield,
+    .aurora-showcase {
+        animation: none !important;
+    }
+}

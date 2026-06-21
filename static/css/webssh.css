@@ -1,0 +1,574 @@
+/* ============================================================
+   webssh.css — WebSSH 终端/SFTP/命令历史
+   ============================================================ */
+
+/* ============================================================
+   WebSSH 终端面板 — 玻璃拟态风格
+   ============================================================ */
+.webssh-section {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--nav-h) - 7rem);
+    min-height: 500px;
+    padding: 0.5rem;
+}
+.webssh-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+}
+.webssh-header .section-title {
+    margin-bottom: 0;
+}
+.webssh-status {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0.625rem;
+    background: var(--bg-muted);
+    border-radius: var(--radius-sm);
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+.status-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(103, 194, 156, 0.5);
+}
+.status-dot.disconnected {
+    background: var(--danger);
+}
+.status-dot.connecting {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+    animation: pulse 1s infinite;
+}
+.webssh-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.375rem;
+}
+.webssh-connection-info {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.375rem 0.625rem;
+    background: var(--bg-muted);
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+.webssh-connection-info code {
+    font-family: var(--font-mono);
+    color: var(--primary);
+}
+
+/* ============================================================
+   WebSSH 三栏工作台布局
+   ============================================================ */
+.webssh-workbench {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    gap: 1rem;
+    overflow: hidden;
+    padding: 0.25rem;
+}
+
+/* 侧栏通用 */
+.webssh-sidebar {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.webssh-sidebar-left {
+    width: 200px;
+}
+.webssh-sidebar-right {
+    width: 280px;
+}
+
+/* 侧栏折叠态 */
+.webssh-sidebar.collapsed {
+    width: 0 !important;
+    border: none;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 侧栏头部 */
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.625rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-muted);
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+/* 文件管理模式标记 */
+.sftp-mode-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+}
+.sftp-mode-badge[title*="SFTP"] {
+    background: rgba(103, 194, 156, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(103, 194, 156, 0.3);
+}
+.sftp-mode-badge[title*="exec"],
+.sftp-mode-badge[title*="EXEC"] {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.sidebar-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sidebar-btn-group {
+    display: flex;
+    gap: 0.15rem;
+}
+.sidebar-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.2rem 0.3rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    line-height: 1;
+    transition: var(--transition);
+}
+.sidebar-btn:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-body);
+}
+
+/* 侧栏内容区 */
+.sidebar-body {
+    flex: 1 1 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.375rem 0.5rem;
+}
+.sidebar-body::-webkit-scrollbar {
+    width: 5px;
+}
+.sidebar-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+.sidebar-body::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+.sidebar-body::-webkit-scrollbar-thumb:hover {
+    background: var(--border-hover);
+}
+.sidebar-empty {
+    padding: 1rem 0.5rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ============ 命令历史列表 ============ */
+.cmd-history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-body);
+    border: 1px solid transparent;
+}
+.cmd-history-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border);
+}
+.cmd-history-item .cmd-icon {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    opacity: 0.5;
+}
+.cmd-history-item .cmd-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.cmd-history-item .cmd-time {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    font-family: var(--font-body);
+}
+
+/* ============ SFTP 面包屑 ============ */
+.sftp-breadcrumb {
+    padding: 0.35rem 0.625rem;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    background: var(--bg-muted);
+}
+.sftp-breadcrumb::-webkit-scrollbar {
+    height: 3px;
+}
+.sftp-path-hint {
+    color: var(--text-muted);
+    font-style: italic;
+}
+.sftp-crumb {
+    cursor: pointer;
+    color: var(--primary);
+    transition: var(--transition);
+}
+.sftp-crumb:hover {
+    text-decoration: underline;
+}
+.sftp-crumb-sep {
+    color: var(--text-muted);
+    margin: 0 0.15rem;
+}
+
+/* ============ SFTP 文件列表 ============ */
+.sftp-file-list {
+    padding: 0.25rem;
+}
+.sftp-file-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 0.75rem;
+    color: var(--text-body);
+    border: 1px solid transparent;
+}
+.sftp-file-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border);
+}
+.sftp-file-item.selected {
+    background: var(--primary-light);
+    border-color: rgba(var(--primary-rgb), 0.3);
+}
+.sftp-file-icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
+    width: 18px;
+    text-align: center;
+}
+.sftp-file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sftp-file-name.is-dir {
+    font-weight: 600;
+    color: var(--primary);
+}
+.sftp-file-size {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+.sftp-file-actions {
+    flex-shrink: 0;
+    display: none;
+    gap: 0.1rem;
+}
+.sftp-file-item:hover .sftp-file-actions {
+    display: flex;
+}
+.sftp-file-action-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.1rem 0.2rem;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    line-height: 1;
+}
+.sftp-file-action-btn:hover {
+    background: var(--bg-muted);
+    color: var(--text-body);
+}
+.sftp-file-action-btn.danger:hover {
+    color: var(--danger);
+}
+
+/* ============ 中栏终端区域 ============ */
+.webssh-terminal-area {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 终端容器 — 毛玻璃边框 + 微光效果，不再有生硬黑框 */
+.webssh-terminal-wrapper {
+    flex: 1 1 0;
+    min-height: 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    position: relative;
+
+    /* 玻璃底色 — 让 xterm 自身背景透出来 */
+    background: transparent;
+
+    /* 多层发光边框 */
+    border: 1px solid rgba(100, 161, 157, 0.15);
+
+    /* 内阴影 — 营造凹陷的"窗口"感 */
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.3),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.15),
+        0 4px 24px rgba(0, 0, 0, 0.25),
+        0 0 60px rgba(100, 161, 157, 0.06);
+}
+
+/* 终端聚焦时 — 边框微亮 */
+.webssh-terminal-wrapper:focus-within {
+    border-color: rgba(100, 161, 157, 0.35);
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.3),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.15),
+        0 4px 24px rgba(0, 0, 0, 0.3),
+        0 0 80px rgba(100, 161, 157, 0.10);
+}
+
+/* 亮色模式终端容器 */
+html:not(.dark) .webssh-terminal-wrapper {
+    border-color: rgba(100, 161, 157, 0.2);
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.08),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 4px 20px rgba(139, 100, 40, 0.08),
+        0 0 40px rgba(100, 161, 157, 0.04);
+}
+html:not(.dark) .webssh-terminal-wrapper:focus-within {
+    border-color: rgba(100, 161, 157, 0.4);
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.08),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+        0 4px 24px rgba(139, 100, 40, 0.12),
+        0 0 60px rgba(100, 161, 157, 0.08);
+}
+
+/* 覆盖 xterm 默认的纯黑 viewport 背景 — 使用终端主题自身背景色 */
+.webssh-terminal-wrapper .xterm .xterm-viewport {
+    background-color: transparent !important;
+}
+
+/* 覆盖 xterm 的 composition-view 黑背景 */
+.webssh-terminal-wrapper .xterm .composition-view {
+    background: rgba(26, 26, 46, 0.95);
+}
+
+/* 终端顶部装饰条 — 模拟窗口标题栏 */
+.webssh-terminal-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 10;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(100, 161, 157, 0.4) 20%,
+        rgba(100, 161, 157, 0.6) 50%,
+        rgba(100, 161, 157, 0.4) 80%,
+        transparent 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.webssh-terminal-wrapper:hover::before,
+.webssh-terminal-wrapper:focus-within::before {
+    opacity: 1;
+}
+
+/* 终端左上角小圆点装饰（红黄绿风格） */
+.webssh-terminal-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success, #67c29c);
+    box-shadow:
+        10px 0 0 var(--warning, #e4c662),
+        20px 0 0 var(--danger, #dc3545);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.webssh-terminal-wrapper:hover::after {
+    opacity: 1;
+}
+
+#websshTerminal {
+    width: 100%;
+    height: 100%;
+    padding: 0.5rem;
+}
+#websshTerminal .xterm {
+    height: 100% !important;
+}
+#websshTerminal .xterm-viewport {
+    overflow-y: auto !important;
+}
+
+/* ============================================================
+   WebSSH 添加主机表单
+   ============================================================ */
+.webssh-add-host {
+    margin: 0 0 16px 0;
+    background: var(--bg-card, rgba(255,255,255,0.04));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: var(--radius, 12px);
+    overflow: hidden;
+}
+.webssh-add-host[open] summary {
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.webssh-add-host summary {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--info, #1cabc4);
+    list-style: none;
+}
+.webssh-add-host summary::-webkit-details-marker {
+    display: none;
+}
+.add-host-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.add-host-form .form-row {
+    display: flex;
+    gap: 12px;
+}
+.add-host-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.add-host-form .form-group.flex-1 {
+    flex: 1;
+}
+.add-host-form label {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+}
+.add-host-form .form-input {
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    background: var(--bg-input, rgba(255,255,255,0.06));
+    color: var(--text, #fff);
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.add-host-form .form-input:focus {
+    border-color: var(--info, #1cabc4);
+}
+.form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+/* ============================================================
+   WebSSH 连接历史
+   ============================================================ */
+.webssh-history-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-card, rgba(255,255,255,0.04));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    transition: background 0.2s;
+}
+.webssh-history-card:hover {
+    background: var(--bg-hover, rgba(255,255,255,0.08));
+}
+.webssh-history-card .conn-info {
+    flex: 1;
+    min-width: 0;
+}
+.webssh-history-card .conn-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text, #fff);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.webssh-history-card .conn-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+    margin-top: 2px;
+}
+.webssh-history-card .conn-time {
+    font-size: 0.7rem;
+    color: var(--text-muted, rgba(255,255,255,0.3));
+    margin-top: 2px;
+}
+.webssh-history-card .conn-actions {
+    flex-shrink: 0;
+    margin-left: 12px;
+}
