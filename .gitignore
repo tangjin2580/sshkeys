@@ -4,11 +4,12 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-*.spec
+ssh-key-manager.spec
 
 # Virtualenv
 venv/
 .venv/
+venv313/
 
 # IDE
 .vscode/
@@ -22,10 +23,8 @@ Thumbs.db
 
 # Project
 *.log
-ssh-key-manager.spec
 
 # Hidden (配置文件除外)
 .*
 !.gitignore
 !.github/
-!.github/**

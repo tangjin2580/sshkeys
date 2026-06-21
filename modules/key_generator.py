@@ -49,14 +49,10 @@ KEY_TYPES = {
     "ECDSA P-521":        {"type": "ecdsa",   "size": 521, "curve": "secp521r1"},
 
     # --- RSA ---
-    "RSA 1024（旧版兼容）": {"type": "rsa", "size": 1024},
     "RSA 2048":            {"type": "rsa", "size": 2048},
     "RSA 3072":            {"type": "rsa", "size": 3072},
     "RSA 4096":            {"type": "rsa", "size": 4096},
     "RSA 8192":            {"type": "rsa", "size": 8192},
-
-    # --- DSA（已弃用，仅旧系统兼容） ---
-    "DSA 1024（已弃用）":   {"type": "dsa", "size": 1024},
 }
 
 

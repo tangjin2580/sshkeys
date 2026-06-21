@@ -41,6 +41,7 @@ a = Analysis(
     hiddenimports=[
         'tkinter',
         'tkinter.ttk',
+        'customtkinter',
         'pystray',
         'pystray._win32',
         'pystray._unix',

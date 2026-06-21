@@ -1,6 +1,7 @@
 """密钥管理路由 — 生成、下载、上传"""
 from flask import Blueprint, request, jsonify, send_file
 import io
+import os
 import logging
 from datetime import datetime
 import modules.common as _common
@@ -68,7 +69,6 @@ def generate_key():
 
         _sse_broadcast("progress", {"message": "✓ 密钥生成完成", "time": datetime.now().strftime("%H:%M:%S")})
         # 计算指纹
-        from modules.key_generator import compute_fingerprint
         fingerprint = compute_fingerprint(pub_str)
 
         _sse_broadcast("key_generated", {

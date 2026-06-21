@@ -12,9 +12,6 @@ def platform_info():
     返回当前运行平台信息。
     用于前端根据平台显示不同的终端候选列表。
     """
-    import sys
-    import os
-    
     platform = sys.platform
     info = {
         "platform": platform,
@@ -71,9 +68,6 @@ def check_terminal_path():
     path = data.get("path", "").strip()
     if not path:
         return jsonify({"valid": False, "message": "路径不能为空"}), 400
-
-    import shutil
-    import os
 
     # 判断是否是完整路径（包含路径分隔符）
     is_absolute = "/" in path or "\\" in path

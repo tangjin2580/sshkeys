@@ -16,7 +16,7 @@ from flask import (
     Response, stream_with_context, g,
 )
 
-from modules.common import _sse_queues, error_response
+from modules.common import _sse_queues, _sse_lock, error_response
 from modules.key_generator import KEY_TYPES
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,8 @@ def index():
 def sse_events():
     """SSE 事件流（限时连接，防止占满线程）"""
     q: queue.Queue = queue.Queue(maxsize=100)
-    _sse_queues.append(q)
+    with _sse_lock:
+        _sse_queues.append(q)
     _sse_start = _time.time()
     _SSE_MAX_LIFETIME = 120  # 单次连接最多 120 秒，断开后前端自动重连
 
@@ -109,8 +110,9 @@ def sse_events():
         except GeneratorExit:
             pass
         finally:
-            if q in _sse_queues:
-                _sse_queues.remove(q)
+            with _sse_lock:
+                if q in _sse_queues:
+                    _sse_queues.remove(q)
 
     return Response(
         stream_with_context(generate()),
@@ -120,6 +122,29 @@ def sse_events():
             "X-Accel-Buffering": "no",
         },
     )
+
+# ==================== SSE 管理 API ====================
+
+@app.route("/api/admin/sse-cleanup", methods=["POST"])
+def sse_cleanup():
+    """手动清理僵死 SSE 队列（满队列视为僵死）。"""
+    from modules.common import _sse_cleanup_stale, get_sse_queue_count
+    removed = _sse_cleanup_stale()
+    return jsonify({
+        "success": True,
+        "removed": removed,
+        "remaining": get_sse_queue_count(),
+    })
+
+
+@app.route("/api/admin/sse-status", methods=["GET"])
+def sse_status():
+    """返回当前 SSE 队列状态。"""
+    from modules.common import get_sse_queue_count
+    return jsonify({
+        "success": True,
+        "queue_count": get_sse_queue_count(),
+    })
 
 # ==================== 启动 ====================
 

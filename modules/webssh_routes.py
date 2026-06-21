@@ -21,8 +21,14 @@ from modules.webssh_sftp import (
     _get_session, _get_sftp,
     _exec_command, _shell_quote, _exec_ls,
 )
+from modules.config import get_sftp_max_download_bytes
 
 logger = logging.getLogger(__name__)
+
+
+def _get_sftp_max_bytes():
+    """运行时读取 SFTP 下载上限（支持热更新）。"""
+    return get_sftp_max_download_bytes()
 
 
 def register_webssh_routes(app):
@@ -88,12 +94,11 @@ def register_webssh_routes(app):
                 sftp_error = str(e)
                 logger.warning(f"[WebSSH] SFTP 不可用，降级为 exec 模式: {e}")
 
-            session_id = str(_ws._sessions_next_id)
-            _ws._sessions_next_id += 1
-
             output_q: queue.Queue = queue.Queue(maxsize=1000)
 
             with _ssh_lock:
+                session_id = str(_ws._sessions_next_id)
+                _ws._sessions_next_id += 1
                 _ssh_sessions[session_id] = {
                     "client": client,
                     "channel": channel,
@@ -118,14 +123,14 @@ def register_webssh_routes(app):
                         if not r:
                             continue
                         if channel.recv_ready():
-                            data = channel.recv(65536).decode("utf-8", errors="replace")
-                            _put_output(output_q, data)
+                            recv_data = channel.recv(65536).decode("utf-8", errors="replace")
+                            _put_output(output_q, recv_data)
                         if channel.recv_stderr_ready():
-                            data = channel.recv_stderr(65536).decode("utf-8", errors="replace")
-                            _put_output(output_q, data)
+                            recv_data = channel.recv_stderr(65536).decode("utf-8", errors="replace")
+                            _put_output(output_q, recv_data)
                     while channel.recv_ready():
-                        data = channel.recv(65536).decode("utf-8", errors="replace")
-                        _put_output(output_q, data)
+                        recv_data = channel.recv(65536).decode("utf-8", errors="replace")
+                        _put_output(output_q, recv_data)
                     output_q.put_nowait(None)
                 except Exception as e:
                     logger.warning(f"[WebSSH] 读取线程异常: {e}")
@@ -319,27 +324,49 @@ def register_webssh_routes(app):
         if file_mode == "sftp" and sftp:
             try:
                 st = sftp.stat(path)
-                if st.st_mode and not (st.st_mode & 0o040000):
-                    def _generate():
-                        with sftp.file(path, "rb") as f:
-                            while True:
-                                chunk = f.read(65536)
-                                if not chunk:
-                                    break
-                                yield chunk
-                    resp = Response(
-                        stream_with_context(_generate()),
-                        mimetype="application/octet-stream",
-                    )
-                    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-                    resp.headers["Content-Length"] = str(st.st_size)
-                    return resp
-                else:
+                if not st.st_mode or (st.st_mode & 0o040000):
                     return jsonify({"success": False, "error": "不能下载目录"}), 400
+                if st.st_size > _get_sftp_max_bytes():
+                    max_mb = _get_sftp_max_bytes() // 1024 // 1024
+                    return jsonify({
+                        "success": False,
+                        "error": f"文件过大（{st.st_size // 1024 // 1024}MB），已超过 {max_mb}MB 限制"
+                    }), 413
+
+                def _generate():
+                    with sftp.file(path, "rb") as f:
+                        while True:
+                            chunk = f.read(65536)
+                            if not chunk:
+                                break
+                            yield chunk
+
+                resp = Response(
+                    stream_with_context(_generate()),
+                    mimetype="application/octet-stream",
+                )
+                resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+                resp.headers["Content-Length"] = str(st.st_size)
+                return resp
+
             except Exception as e:
                 return jsonify({"success": False, "error": str(e)}), 500
         else:
             try:
+                # 先检查文件大小，防止大文件撑爆内存
+                size_cmd = f"stat -c '%s' {_shell_quote(path)} 2>/dev/null || stat -f '%z' {_shell_quote(path)} 2>/dev/null"
+                size_out, _, size_code = _exec_command(client, size_cmd)
+                if size_code == 0 and size_out.strip():
+                    try:
+                        file_size = int(size_out.strip())
+                        if file_size > _get_sftp_max_bytes():
+                            return jsonify({
+                                "success": False,
+                                "error": f"文件过大（{file_size // 1024 // 1024}MB），已超过 100MB 限制"
+                            }), 413
+                    except ValueError:
+                        pass
+
                 check_cmd = f"file -b {_shell_quote(path)} 2>/dev/null | head -1"
                 check_out, _, _ = _exec_command(client, check_cmd)
                 is_text = check_out and ('text' in check_out.lower() or 'ascii' in check_out.lower() or 'utf' in check_out.lower())

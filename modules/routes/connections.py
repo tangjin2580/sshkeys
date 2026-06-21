@@ -3,6 +3,10 @@ from flask import Blueprint, request, jsonify
 from pathlib import Path
 import logging
 from datetime import datetime
+import os
+import sys
+import shutil
+import subprocess
 import modules.common as _common
 from modules.connections_store import (
     load_all as load_connections,
@@ -71,10 +75,6 @@ def connect_to_server():
     一键打开终端 SSH 连接到服务器
     平台适配: macOS → Terminal.app/iTerm2 | Windows → wt/cmd | Linux → gnome-terminal/konsole/xterm
     """
-    import shutil
-    import subprocess
-    import sys
-    
     data = request.get_json() or {}
     alias = data.get("alias", "").strip()
     terminal_path = data.get("terminal_path", "").strip()
