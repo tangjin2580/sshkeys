@@ -102,7 +102,10 @@ def sse_events():
                     yield f"event: reconnect\ndata: {json.dumps({'message': '请重连'})}\n\n"
                     break
                 try:
-                    msg = q.get(timeout=30)
+                    msg = q.get(timeout=5)
+                    if msg is None:
+                        # 收到关闭哨兵，优雅退出（不发送额外数据）
+                        break
                     yield msg
                 except queue.Empty:
                     # 发送心跳保持连接

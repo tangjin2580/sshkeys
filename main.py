@@ -12,6 +12,7 @@ SSH Key Manager — 主入口（GUI 主面板 + 系统托盘）
 
 import os
 import sys
+import signal
 import socket
 import time
 import webbrowser
@@ -27,7 +28,8 @@ if getattr(sys, "frozen", False):
     ROOT_DIR = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else ROOT_DIR
 sys.path.insert(0, str(ROOT_DIR))
 
-from modules.server import create_app, _sse_queues
+from modules.common import _sse_queues, _sse_lock
+from modules.server import create_app
 
 # ==================== 日志配置 ====================
 logging.basicConfig(
@@ -57,22 +59,26 @@ _main_window = None      # tkinter 主窗口实例
 # ==================== 优雅关闭 ====================
 
 def _cleanup_and_exit():
-    """清理所有资源并退出"""
+    """清理所有资源并优雅退出"""
     global _shutting_down
     if _shutting_down:
         return
     _shutting_down = True
     logger.info("正在关闭服务...")
 
-    # 1. 关闭所有 SSE 队列
-    for q in _sse_queues:
+    # 1. 通知所有 SSE 连接优雅关闭（发送 None 哨兵）
+    with _sse_lock:
+        queues_snapshot = list(_sse_queues)
+    for q in queues_snapshot:
         try:
             q.put_nowait(None)
         except Exception:
             pass
-    _sse_queues.clear()
 
-    # 2. 关闭所有 WebSSH 会话
+    # 2. 给 SSE 生成器时间发送剩余数据（等待 1 秒）
+    time.sleep(1.0)
+
+    # 3. 关闭所有 WebSSH 会话
     try:
         from modules.webssh import _ssh_sessions, _ssh_lock, _close_ssh_session
         with _ssh_lock:
@@ -86,7 +92,16 @@ def _cleanup_and_exit():
     except Exception:
         pass
 
+    # 4. 停止系统托盘
+    global _tray_icon
+    if _tray_icon:
+        try:
+            _tray_icon.stop()
+        except Exception:
+            pass
+
     logger.info("服务已关闭")
+    # 主线程会在 _quit() 中调用 root.destroy()，此处不主动退出
 
 
 # ==================== Waitress 生产服务器 ====================
@@ -915,7 +930,10 @@ def main():
 
     # 4. 启动 GUI 主面板（主线程，阻塞）
     _main_window = MainPanel()
-    _main_window.run()
+    try:
+        _main_window.run()
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
     # mainloop 结束后清理
     _cleanup_and_exit()
