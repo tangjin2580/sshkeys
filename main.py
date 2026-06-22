@@ -1100,7 +1100,14 @@ class MainPanel:
         except Exception as e:
             return results
         results.sort(key=lambda x: x["pid"])
-        return results
+        # PID 去重（macOS .app 可能产生同 PID 的多个 ps 条目）
+        seen_pids = set()
+        deduped = []
+        for r in results:
+            if r["pid"] not in seen_pids:
+                seen_pids.add(r["pid"])
+                deduped.append(r)
+        return deduped
 
     def _kill_selected_processes(self):
         from PyQt6.QtWidgets import QMessageBox
@@ -1109,10 +1116,16 @@ class MainPanel:
         if not items:
             QMessageBox.warning(self.win, "提示", "请先选中要结束的进程")
             return
+        if not self._proc_pids:
+            QMessageBox.warning(self.win, "提示", "进程列表为空，请先刷新")
+            return
         sel_rows = [self.proc_listbox.row(it) for it in items]
+        # 确保索引有效
+        sel_rows = [r for r in sel_rows if 0 <= r < len(self._proc_pids)]
+        if not sel_rows:
+            return
         pids = [self._proc_pids[i]["pid"] for i in sel_rows]
         current_pid = os.getpid()
-        # 检查是否选中了当前进程
         if current_pid in pids:
             QMessageBox.warning(
                 self.win, "无法操作",
@@ -1128,16 +1141,26 @@ class MainPanel:
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        killed = 0
         for pid in pids:
             try:
                 if sys.platform.startswith("win"):
                     subprocess.run(["taskkill", "/F", "/PID", str(pid)],
                                    capture_output=True, timeout=5)
                 else:
-                    os.kill(pid, signal.SIGTERM)
+                    # SIGKILL 强制终止，比 SIGTERM 更可靠
+                    os.kill(pid, signal.SIGKILL)
+                killed += 1
+            except ProcessLookupError:
+                logger.info(f"PID {pid} 已不存在")
+                killed += 1
+            except PermissionError:
+                logger.warning(f"PID {pid} 权限不足，无法结束")
             except Exception as e:
                 logger.warning(f"无法结束 PID {pid}: {e}")
-        self._QTimer.singleShot(500, self._refresh_processes)
+        if killed:
+            self.lbl_proc_status.setText(f"已结束 {killed} 个进程，正在刷新…")
+        self._QTimer.singleShot(800, self._refresh_processes)
 
     # ======================== SFTP 设置 ========================
 
