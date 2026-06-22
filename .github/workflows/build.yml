@@ -176,8 +176,7 @@ jobs:
           fi
 
           # 构建文件列表和发布说明
-          FILES="release/ssh-key-manager-windows-${VER}.exe
-release/ssh-key-manager-linux-${VER}"
+          FILES="release/ssh-key-manager-windows-${VER}.exe"$'\n'"release/ssh-key-manager-linux-${VER}"
           BODY_MACOS_ROW=""
 
           # macOS: 可选（main 分支不构建 macOS）
@@ -185,8 +184,7 @@ release/ssh-key-manager-linux-${VER}"
           if [ -f "$MAC_DMG" ]; then
             mv "$MAC_DMG" "release/ssh-key-manager-macos-${VER}.dmg"
             echo "✅ macOS: release/ssh-key-manager-macos-${VER}.dmg"
-            FILES="${FILES}
-release/ssh-key-manager-macos-${VER}.dmg"
+            FILES="${FILES}"$'\n'"release/ssh-key-manager-macos-${VER}.dmg"
             BODY_MACOS_ROW="| 🍎 macOS | \`ssh-key-manager-macos-${VER}.dmg\` |"
             echo "has_macos=true" >> $GITHUB_OUTPUT
           else
@@ -198,25 +196,19 @@ release/ssh-key-manager-macos-${VER}.dmg"
           ls -la release/
 
           # 构建发布说明
-          cat > /tmp/body.md << BODYEOF
-          ## 🚀 SSH Key Manager ${VER}
-
-          > 自动构建于 \`${{ github.sha }}\`
-
-          ### 下载
-          | 平台 | 文件 |
-          |---|---|
-          | 🐧 Linux | \`ssh-key-manager-linux-${VER}\` |
-          | 🪟 Windows | \`ssh-key-manager-windows-${VER}.exe\` |
-          ${BODY_MACOS_ROW}
-
-          ### 使用
-          \`\`\`bash
-          # Windows: 双击 ssh-key-manager-windows-*.exe
-          # Linux: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
-          # macOS: 双击 .dmg，将 SSH Key Manager.app 拖入应用程序文件夹
-          \`\`\`
-          BODYEOF
+          printf '## 🚀 SSH Key Manager %s\n\n' "${VER}" > /tmp/body.md
+          printf '> 自动构建于 `%s`\n\n' "${{ github.sha }}" >> /tmp/body.md
+          printf '### 下载\n| 平台 | 文件 |\n|---|---|\n' >> /tmp/body.md
+          printf '| 🐧 Linux | `ssh-key-manager-linux-%s` |\n' "${VER}" >> /tmp/body.md
+          printf '| 🪟 Windows | `ssh-key-manager-windows-%s.exe` |\n' "${VER}" >> /tmp/body.md
+          if [ -n "${BODY_MACOS_ROW}" ]; then
+            printf '%s\n' "${BODY_MACOS_ROW}" >> /tmp/body.md
+          fi
+          printf '\n### 使用\n```bash\n' >> /tmp/body.md
+          printf '# Windows: 双击 ssh-key-manager-windows-*.exe\n' >> /tmp/body.md
+          printf '# Linux: chmod +x ssh-key-manager-* && ./ssh-key-manager-*\n' >> /tmp/body.md
+          printf '# macOS: 双击 .dmg，将 SSH Key Manager.app 拖入应用程序文件夹\n' >> /tmp/body.md
+          printf '```\n' >> /tmp/body.md
 
           # 写入 outputs
           echo "files<<EOF" >> $GITHUB_OUTPUT
