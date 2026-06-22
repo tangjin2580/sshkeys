@@ -893,13 +893,31 @@ def main():
     parser = argparse.ArgumentParser(description="SSH Key Manager")
     parser.add_argument("--dev", action="store_true",
                         help="开发模式：启用代码热重载（不启动 GUI）")
+    parser.add_argument("--headless", action="store_true",
+                        help="无头模式：仅启动 Web 服务，不启动 GUI/托盘（适合服务器）")
+    parser.add_argument("--port", type=int, default=PORT,
+                        help=f"服务端口（默认 {PORT}）")
+    parser.add_argument("--host", default=HOST,
+                        help=f"绑定地址（默认 {HOST}，局域网可改为 0.0.0.0）")
     args = parser.parse_args()
+
+    # 将参数传入全局变量（避免大规模重构）
+    global HOST, PORT, APP_URL
+    HOST = args.host
+    PORT = args.port
+    APP_URL = f"http://{HOST}:{PORT}"
 
     logger.info("=" * 50)
     logger.info("  SSH Key Manager")
     logger.info("=" * 50)
     logger.info(f"  服务地址: {APP_URL}")
-    logger.info(f"  运行模式: {'开发（热重载）' if args.dev else '生产（GUI + 托盘）'}")
+    if args.headless:
+        run_mode = "无头模式（仅 Web 服务）"
+    elif args.dev:
+        run_mode = "开发（热重载）"
+    else:
+        run_mode = "生产（GUI + 托盘）"
+    logger.info(f"  运行模式: {run_mode}")
     logger.info("=" * 50)
 
     app = create_app()
@@ -909,6 +927,18 @@ def main():
         logger.info("开发模式：Flask 开发服务器")
         threading.Timer(1.5, lambda: webbrowser.open(APP_URL)).start()
         app.run(host=HOST, port=PORT, debug=True, use_reloader=True)
+        return
+
+    if args.headless:
+        # 无头模式：仅启动 Waitress，不启动 GUI/托盘
+        logger.info("无头模式：仅启动 Web 服务器")
+        logger.info(f"访问: {APP_URL}")
+        logger.info("按 Ctrl+C 停止服务")
+        try:
+            from waitress import serve
+            serve(app, host=HOST, port=PORT, threads=8)
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("服务已停止")
         return
 
     # ==================== 生产模式 ====================

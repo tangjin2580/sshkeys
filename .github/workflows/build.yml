@@ -30,25 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python (macOS — use Homebrew for Tk 9.0)
+      - name: Setup Python (macOS — use Homebrew venv for Tk 9.0)
         if: matrix.platform == 'macos'
         shell: bash
         run: |
           # GitHub Actions 自带 Python 3.13 (Tk 8.6)，在 macOS 14+ 会崩溃
           # 改用 Homebrew 的 python-tk@3.13（绑定 Tk 9.0）
           brew install python-tk@3.13 || brew upgrade python-tk@3.13
-          # 创建 shim 目录，让 python/pip 指向 Homebrew 版本
-          SHIM="$RUNNER_TEMP/py-shim"
-          mkdir -p "$SHIM"
-          BREW_PY="$(brew --prefix python@3.13)/bin"
-          ln -sf "$BREW_PY/python3.13" "$SHIM/python"
-          ln -sf "$BREW_PY/python3.13" "$SHIM/python3"
-          ln -sf "$BREW_PY/pip3.13"     "$SHIM/pip"
-          ln -sf "$BREW_PY/pip3.13"     "$SHIM/pip3"
-          echo "$SHIM" >> $GITHUB_PATH
+          # 用 Homebrew Python 创建 venv（绕过 PEP 668 限制）
+          BREW_PY="$(brew --prefix python@3.13)/bin/python3.13"
+          VENV="$RUNNER_TEMP/pyvenv"
+          "$BREW_PY" -m venv "$VENV"
+          # 将 venv 的 bin 目录加入 PATH（后续步骤自动生效）
+          echo "$VENV/bin" >> $GITHUB_PATH
           # 验证
-          python --version
-          python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+          "$VENV/bin/python" --version
+          "$VENV/bin/python" -c "import tkinter; print('Tk', tkinter.TkVersion)"
 
       - name: Setup Python (non-macOS)
         if: matrix.platform != 'macos'
