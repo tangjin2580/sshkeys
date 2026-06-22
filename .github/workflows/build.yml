@@ -43,6 +43,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y python3-tk
 
+      - name: Install system dependencies (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          pip install pyobjc-framework-Cocoa
+
       - name: Install dependencies
         shell: bash
         run: |

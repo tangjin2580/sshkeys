@@ -940,4 +940,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as _exc:
+        # console=False 时 macOS/Linux 上无终端输出，崩溃日志写到文件以便诊断
+        import traceback
+        _log_path = os.path.join(os.path.expanduser("~"), ".ssh_key_manager_crash.log")
+        try:
+            with open(_log_path, "w", encoding="utf-8") as _f:
+                _f.write(f"SSH Key Manager crash at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                _f.write(f"Platform: {sys.platform}\n")
+                _f.write(f"Frozen: {getattr(sys, 'frozen', False)}\n")
+                _f.write(f"Python: {sys.version}\n")
+                _f.write("=" * 60 + "\n")
+                traceback.print_exc(file=_f)
+        except Exception:
+            pass
+        raise
