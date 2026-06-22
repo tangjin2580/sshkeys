@@ -849,18 +849,24 @@ class MainPanel:
             QMessageBox.critical(self.win, "清理失败", str(e))
 
     def _check_update(self):
-        """检查 GitHub 最新版本"""
+        """检查 GitHub 最新版本（缓存 5 分钟，后台线程不卡 UI）"""
+        now = time.time()
+        # 5 分钟内已有结果，直接复用缓存
+        if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
+            self._apply_update_result(self._update_cache_result)
+            return
         self.lbl_update_status.setText("检查中…")
-        self._QTimer.singleShot(300, self._do_check_update)
+        self.lbl_update_status.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
+        threading.Thread(target=self._do_check_update, daemon=True).start()
 
     def _do_check_update(self):
-        import urllib.request, json, ssl
+        """后台线程：用 requests 请求 GitHub API，结果回主线程更新 UI"""
+        import requests, json
 
         GITHUB_API = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
         RELEASES_URL = "https://github.com/tangjin2580/sshkeys/releases/latest"
 
         def _parse_version(v: str) -> tuple:
-            """将 'v1.0.21' 或 '1.0.21' 转为可比较的元组"""
             v = v.lstrip("v").strip()
             try:
                 return tuple(int(x) for x in v.split("."))
@@ -868,13 +874,12 @@ class MainPanel:
                 return (0,)
 
         try:
-            ctx = ssl.create_default_context()
-            req = urllib.request.Request(GITHUB_API, headers={
+            resp = requests.get(GITHUB_API, headers={
                 "User-Agent": "SSH-Key-Manager",
                 "Accept": "application/vnd.github+json",
-            })
-            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            }, timeout=(3, 10))
+            resp.raise_for_status()
+            data = resp.json()
 
             latest_tag = data.get("tag_name", "")
             latest_ver = _parse_version(latest_tag)
@@ -882,24 +887,31 @@ class MainPanel:
             html_url = data.get("html_url", RELEASES_URL)
 
             if latest_ver > current_ver:
-                msg = f"🆕 有新版本 {latest_tag} → 点击下载"
-                self.lbl_update_status.setStyleSheet(
-                    "color: #10b981; font-size: 10px; border: none; text-decoration: underline;")
-                self.lbl_update_status.setText(msg)
-                def _open_update_url(event):
-                    webbrowser.open(html_url)
-                self.lbl_update_status.mousePressEvent = _open_update_url
+                result = ("new", f"🆕 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
             elif latest_ver == current_ver:
-                self.lbl_update_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
-                self.lbl_update_status.setText(f"✅ 已是最新版本 {latest_tag}")
-                self.lbl_update_status.mousePressEvent = None
+                result = ("current", f"✅ 已是最新版本 {latest_tag}", "#64748b", None)
             else:
-                self.lbl_update_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
-                self.lbl_update_status.setText(f"当前 {self._current_version}（比最新 {latest_tag} 还新）")
-                self.lbl_update_status.mousePressEvent = None
+                result = ("newer", f"当前 {self._current_version}（比最新 {latest_tag} 还新）", "#64748b", None)
         except Exception as e:
-            self.lbl_update_status.setStyleSheet("color: #f87171; font-size: 10px; border: none;")
-            self.lbl_update_status.setText(f"❌ 检查失败: {e}")
+            result = ("error", f"❌ 检查失败: {e}", "#f87171", None)
+
+        self._update_cache_time = time.time()
+        self._update_cache_result = result
+        self._QTimer.singleShot(0, lambda: self._apply_update_result(result))
+
+    def _apply_update_result(self, result):
+        """主线程：将检查结果应用到 UI"""
+        _, msg, color, url = result
+        self.lbl_update_status.setStyleSheet(
+            f"color: {color}; font-size: 10px; border: none;" +
+            (" text-decoration: underline;" if url else ""))
+        self.lbl_update_status.setText(msg)
+        if url:
+            def _open_update_url(event):
+                webbrowser.open(url)
+            self.lbl_update_status.mousePressEvent = _open_update_url
+        else:
+            self.lbl_update_status.mousePressEvent = None
 
     # ======================== 进程管理 ========================
 
