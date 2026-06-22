@@ -1000,14 +1000,15 @@ class MainPanel:
 
     def _do_refresh_processes(self):
         """后台线程：获取进程列表"""
+        err_msg = ""
+        proc_pids = None
         try:
             proc_pids = self._list_python_processes()
+            logger.info(f"[进程刷新] 找到 {len(proc_pids) if proc_pids else 0} 个进程")
         except Exception as e:
-            proc_pids = None
             err_msg = str(e)
-        self._QTimer.singleShot(0, lambda: self._apply_process_result(
-            proc_pids if proc_pids is not None else None,
-            err_msg if proc_pids is None else ""))
+            logger.warning(f"[进程刷新] 失败: {e}")
+        self._QTimer.singleShot(0, lambda: self._apply_process_result(proc_pids, err_msg))
 
     def _apply_process_result(self, proc_pids, err_msg=""):
         """主线程：将进程列表应用到 UI"""
@@ -1045,7 +1046,6 @@ class MainPanel:
         import sys as _sys, subprocess, csv, io
         is_win = _sys.platform.startswith("win")
         current_pid = os.getpid()
-        # 当前 Python 可执行文件名（如 python3.14、pythonw等）
         py_basename = os.path.basename(_sys.executable).lower()
         results = []
         try:
@@ -1058,7 +1058,6 @@ class MainPanel:
                     if len(row) < 5:
                         continue
                     name = row[0].lower()
-                    # 匹配 python / sshkeys / 当前可执行文件名
                     if "python" not in name and "sshkeys" not in name and py_basename not in name:
                         continue
                     try:
@@ -1069,7 +1068,6 @@ class MainPanel:
                         continue
                     results.append({"pid": pid, "cmd": row[0], "mem": mem_kb})
             else:
-                # 使用 ps aux 获取更全面的进程列表
                 out = subprocess.check_output(
                     ["ps", "aux"], timeout=10
                 ).decode("utf-8", errors="replace")
@@ -1078,7 +1076,6 @@ class MainPanel:
                     line = raw_line.strip()
                     if not line:
                         continue
-                    # 跳过 ps aux 的表头行
                     if not header_skipped:
                         header_skipped = True
                         continue
@@ -1087,22 +1084,43 @@ class MainPanel:
                         continue
                     try:
                         pid = int(parts[1])
-                        mem_pct = parts[3]  # %MEM
-                        rss_kb = int(parts[5])  # RSS in KB
+                        rss_kb = int(parts[5])
                     except (ValueError, IndexError):
                         continue
                     full_cmd = parts[10] if len(parts) > 10 else ""
                     combined = full_cmd.lower()
-                    # 扩大匹配范围：python/python3/当前可执行文件/sshkeys/ssh keys/main.py
+                    # 匹配 python / 当前可执行文件 / sshkeys / main.py / ssh_key_manager
                     if not any(kw in combined for kw in ["python", py_basename, "sshkeys", "main.py", "ssh_key_manager"]):
                         continue
-                    # 截断过长的命令用于显示
                     display_cmd = full_cmd[:100] if len(full_cmd) > 100 else full_cmd
                     results.append({"pid": pid, "cmd": display_cmd, "mem": rss_kb})
         except Exception as e:
-            return results
+            logger.warning(f"[进程列表] 获取失败: {e}")
+        # 兜底：空结果时用当前 PID 反查，确保至少能看到自身进程
+        if not results:
+            logger.info(f"[进程列表] 过滤结果为空，用 ps -p {current_pid} 兜底反查")
+            try:
+                if not is_win:
+                    out2 = subprocess.check_output(
+                        ["ps", "-p", str(current_pid), "-o", "pid=,rss=,args="], timeout=5
+                    ).decode("utf-8", errors="replace")
+                    for line in out2.strip().splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        p = line.split(None, 2)
+                        if len(p) >= 2:
+                            try:
+                                pid2 = int(p[0])
+                                rss2 = int(p[1])
+                            except ValueError:
+                                continue
+                            cmd2 = p[2] if len(p) > 2 else sys.executable
+                            results.append({"pid": pid2, "cmd": cmd2[:100], "mem": rss2})
+            except Exception as e:
+                logger.warning(f"[进程列表] 兜底查询失败: {e}")
         results.sort(key=lambda x: x["pid"])
-        # PID 去重（macOS .app 可能产生同 PID 的多个 ps 条目）
+        # PID 去重
         seen_pids = set()
         deduped = []
         for r in results:
