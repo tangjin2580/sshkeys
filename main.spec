@@ -109,7 +109,7 @@ exe = EXE(
     argv_emulation=True,  # macOS 双击打开时支持拖入文件
     target_arch=None,
     codesign_identity=None,
-    entitlements_file=None,
+    entitlements_file='entitlements.plist' if sys.platform == 'darwin' else None,
     icon=app_icon,
 )
 

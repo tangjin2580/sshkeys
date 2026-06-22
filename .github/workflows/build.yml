@@ -78,15 +78,19 @@ jobs:
         run: |
           pyinstaller main.spec
 
-      - name: Package macOS .app as zip
+      - name: Package macOS .app as dmg
         if: matrix.platform == 'macos'
         shell: bash
         run: |
           cd dist
           if [ -d "SSH Key Manager.app" ]; then
             echo "✅ .app Bundle 已生成"
-            zip -r "ssh-key-manager-macos.zip" "SSH Key Manager.app"
-            echo "✅ 已打包为 ssh-key-manager-macos.zip"
+            # 创建 .dmg（macOS 标准应用分发格式）
+            hdiutil create -volname "SSH Key Manager" \
+              -srcfolder "SSH Key Manager.app" \
+              -ov -format UDZO \
+              "ssh-key-manager-macos.dmg"
+            echo "✅ 已打包为 ssh-key-manager-macos.dmg"
           else
             echo "❌ .app Bundle 未找到"
             ls -la
@@ -119,7 +123,7 @@ jobs:
           name: ssh-key-manager-${{ matrix.platform }}
           path: |
             dist/ssh-key-manager-${{ matrix.platform }}${{ matrix.platform == 'windows' && '.exe' || '' }}
-            dist/ssh-key-manager-macos.zip
+            dist/ssh-key-manager-macos.dmg
           if-no-files-found: warn
 
   release:
@@ -192,13 +196,13 @@ jobs:
             exit 1
           fi
 
-          # macOS: 重命名 .app zip 为带版本号的文件名
-          MAC_ZIP="release/ssh-key-manager-macos/ssh-key-manager-macos.zip"
-          if [ -f "$MAC_ZIP" ]; then
-            mv "$MAC_ZIP" "release/ssh-key-manager-macos-${VER}.zip"
-            echo "✅ macOS: release/ssh-key-manager-macos-${VER}.zip"
+          # macOS: 重命名 .dmg 为带版本号的文件名
+          MAC_DMG="release/ssh-key-manager-macos/ssh-key-manager-macos.dmg"
+          if [ -f "$MAC_DMG" ]; then
+            mv "$MAC_DMG" "release/ssh-key-manager-macos-${VER}.dmg"
+            echo "✅ macOS: release/ssh-key-manager-macos-${VER}.dmg"
           else
-            echo "❌ macOS zip not found"
+            echo "❌ macOS dmg not found"
             exit 1
           fi
 
@@ -220,17 +224,17 @@ jobs:
             |---|---|
             | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.bump.outputs.new }}` |
             | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe` |
-            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip` |
+            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.dmg` |
 
             ### 使用
             ```bash
             # Windows: 双击 ssh-key-manager-windows-*.exe
             # Linux: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
-            # macOS: 解压 zip，将 SSH Key Manager.app 拖入应用程序文件夹，双击运行
+            # macOS: 双击 .dmg，将 SSH Key Manager.app 拖入应用程序文件夹
             ```
           files: |
             release/ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe
             release/ssh-key-manager-linux-v${{ steps.bump.outputs.new }}
-            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip
+            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.dmg
           draft: false
           prerelease: false
