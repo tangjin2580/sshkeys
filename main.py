@@ -513,6 +513,8 @@ class MainPanel:
 
     def _setup_tray(self):
         """QSystemTrayIcon 系统托盘"""
+        from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+        from PyQt6.QtGui import QAction
         if not self._qicon:
             return
         tray = QSystemTrayIcon(self._qicon, self.win)
