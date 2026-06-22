@@ -106,9 +106,24 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,  # 无控制台黑框
     disable_windowed_traceback=False,
-    argv_emulation=False,
+    argv_emulation=True,  # macOS 双击打开时支持拖入文件
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=app_icon,
 )
+
+# macOS: 打包成双击即可运行的 .app Bundle
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='SSH Key Manager.app',
+        icon=app_icon,
+        bundle_identifier='com.tangjin.sshkeymanager',
+        info_plist={
+            'NSHighResolutionCapable': True,
+            'CFBundleShortVersionString': '1.0',
+            'CFBundleName': 'SSH Key Manager',
+            'NSHumanReadableCopyright': '© tangjin2580',
+        },
+    )

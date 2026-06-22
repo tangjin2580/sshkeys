@@ -30,7 +30,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python 3.13
+      - name: Setup Python (macOS — use Homebrew for Tk 9.0)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          # GitHub Actions 自带 Python 3.13 (Tk 8.6)，在 macOS 14+ 会崩溃
+          # 改用 Homebrew 的 python-tk@3.13（绑定 Tk 9.0）
+          brew install python-tk@3.13 || brew upgrade python-tk@3.13
+          # 创建 shim 目录，让 python/pip 指向 Homebrew 版本
+          SHIM="$RUNNER_TEMP/py-shim"
+          mkdir -p "$SHIM"
+          BREW_PY="$(brew --prefix python@3.13)/bin"
+          ln -sf "$BREW_PY/python3.13" "$SHIM/python"
+          ln -sf "$BREW_PY/python3.13" "$SHIM/python3"
+          ln -sf "$BREW_PY/pip3.13"     "$SHIM/pip"
+          ln -sf "$BREW_PY/pip3.13"     "$SHIM/pip3"
+          echo "$SHIM" >> $GITHUB_PATH
+          # 验证
+          python --version
+          python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+
+      - name: Setup Python (non-macOS)
+        if: matrix.platform != 'macos'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -55,12 +76,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build with PyInstaller (single file)
+      - name: Build with PyInstaller
         shell: bash
         run: |
           pyinstaller main.spec
 
+      - name: Package macOS .app as zip
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          cd dist
+          if [ -d "SSH Key Manager.app" ]; then
+            echo "✅ .app Bundle 已生成"
+            zip -r "ssh-key-manager-macos.zip" "SSH Key Manager.app"
+            echo "✅ 已打包为 ssh-key-manager-macos.zip"
+          else
+            echo "❌ .app Bundle 未找到"
+            ls -la
+            exit 1
+          fi
+
       - name: Verify build output
+        if: matrix.platform != 'macos'
         shell: bash
         run: |
           echo "=== dist contents ==="
@@ -79,12 +116,14 @@ jobs:
             exit 1
           fi
 
-      - name: Upload single-file artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ssh-key-manager-${{ matrix.platform }}
-          path: dist/ssh-key-manager-${{ matrix.platform }}${{ matrix.platform == 'windows' && '.exe' || '' }}
-          if-no-files-found: error
+          path: |
+            dist/ssh-key-manager-${{ matrix.platform }}${{ matrix.platform == 'windows' && '.exe' || '' }}
+            dist/ssh-key-manager-macos.zip
+          if-no-files-found: warn
 
   release:
     name: Create GitHub Release
@@ -156,14 +195,13 @@ jobs:
             exit 1
           fi
 
-          # macOS: 重命名为带版本号的文件名
-          MAC_BIN="release/ssh-key-manager-macos/ssh-key-manager-macos"
-          if [ -f "$MAC_BIN" ]; then
-            chmod +x "$MAC_BIN"
-            mv "$MAC_BIN" "release/ssh-key-manager-macos-${VER}"
-            echo "✅ macOS: release/ssh-key-manager-macos-${VER}"
+          # macOS: 重命名 .app zip 为带版本号的文件名
+          MAC_ZIP="release/ssh-key-manager-macos/ssh-key-manager-macos.zip"
+          if [ -f "$MAC_ZIP" ]; then
+            mv "$MAC_ZIP" "release/ssh-key-manager-macos-${VER}.zip"
+            echo "✅ macOS: release/ssh-key-manager-macos-${VER}.zip"
           else
-            echo "❌ macOS binary not found"
+            echo "❌ macOS zip not found"
             exit 1
           fi
 
@@ -185,17 +223,17 @@ jobs:
             |---|---|
             | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.bump.outputs.new }}` |
             | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe` |
-            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}` |
+            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip` |
 
             ### 使用
             ```bash
-            # 直接下载运行，无需解压
             # Windows: 双击 ssh-key-manager-windows-*.exe
-            # Linux/macOS: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
+            # Linux: chmod +x ssh-key-manager-* && ./ssh-key-manager-*
+            # macOS: 解压 zip，将 SSH Key Manager.app 拖入应用程序文件夹，双击运行
             ```
           files: |
             release/ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe
             release/ssh-key-manager-linux-v${{ steps.bump.outputs.new }}
-            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}
+            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.zip
           draft: false
           prerelease: false
