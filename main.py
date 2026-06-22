@@ -889,6 +889,7 @@ def _toggle_autostart_tray(icon):
 
 def main():
     global _main_window
+    global HOST, PORT, APP_URL
 
     parser = argparse.ArgumentParser(description="SSH Key Manager")
     parser.add_argument("--dev", action="store_true",
@@ -901,8 +902,7 @@ def main():
                         help=f"绑定地址（默认 {HOST}，局域网可改为 0.0.0.0）")
     args = parser.parse_args()
 
-    # 将参数传入全局变量（避免大规模重构）
-    global HOST, PORT, APP_URL
+    # 用命令行参数覆盖全局变量
     HOST = args.host
     PORT = args.port
     APP_URL = f"http://{HOST}:{PORT}"
