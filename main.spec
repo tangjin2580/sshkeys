@@ -26,10 +26,6 @@ else:
 if app_icon is not None and not os.path.exists(app_icon):
     app_icon = None
 
-# customtkinter 主题/图片资源文件必须显式打包
-import customtkinter as _ctk
-_ctk_dir = os.path.dirname(_ctk.__file__)
-
 a = Analysis(
     ['main.py'],
     pathex=[str(Path('.').resolve())],
@@ -41,24 +37,16 @@ a = Analysis(
         ('VERSION', '.'),
         ('asset/icon.ico', 'asset'),
         ('asset/icon.icns', 'asset'),
-        (_ctk_dir, 'customtkinter'),  # CTk 主题/图片资源
     ],
     hiddenimports=[
-        'tkinter',
-        'tkinter.ttk',
-        'tkinter.filedialog',
-        'tkinter.messagebox',
-        'customtkinter',
-        'pystray',
-        'pystray._win32',
-        'pystray._unix',
-        'pystray._darwin',      # macOS 系统托盘后端
-        'AppKit',               # pyobjc: macOS AppKit 框架
-        'Foundation',           # pyobjc: macOS Foundation 框架
+        'PyQt6',
+        'PyQt6.QtWidgets',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
         'PIL',
         'PIL.Image',
         'PIL.ImageDraw',
-        'PIL.ImageTk',
+        'PIL.ImageQt',
         'PIL.ImageFont',
         'PIL.ImageColor',
         'paramiko',

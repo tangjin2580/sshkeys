@@ -28,6 +28,7 @@ if getattr(sys, "frozen", False):
     ROOT_DIR = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else ROOT_DIR
 sys.path.insert(0, str(ROOT_DIR))
 
+
 from modules.common import _sse_queues, _sse_lock
 from modules.server import create_app
 
@@ -52,8 +53,8 @@ AUTOSTART_NAME = "SSHKeyManager"
 # ==================== 全局状态 ====================
 _shutting_down = False
 _server_started = threading.Event()
-_tray_icon = None        # pystray 图标实例
-_main_window = None      # tkinter 主窗口实例
+_tray_icon = None        # 系统托盘实例
+_main_window = None      # 主窗口实例
 
 
 # ==================== 优雅关闭 ====================
@@ -92,16 +93,7 @@ def _cleanup_and_exit():
     except Exception:
         pass
 
-    # 4. 停止系统托盘
-    global _tray_icon
-    if _tray_icon:
-        try:
-            _tray_icon.stop()
-        except Exception:
-            pass
-
     logger.info("服务已关闭")
-    # 主线程会在 _quit() 中调用 root.destroy()，此处不主动退出
 
 
 # ==================== Waitress 生产服务器 ====================
@@ -215,10 +207,6 @@ def _create_icon_image():
     return img
 
 
-def _icon_to_tk_photo(icon_img):
-    """PIL Image → tkinter PhotoImage"""
-    from PIL import ImageTk
-    return ImageTk.PhotoImage(icon_img)
 
 
 # ==================== 开机自启 ====================
@@ -282,419 +270,688 @@ def _disable_autostart():
         return False
 
 
-# ==================== GUI 主面板（CustomTkinter 现代化） ====================
+# ==================== GUI 主面板（PyQt6） ====================
 
 class MainPanel:
-    """
-    主面板窗口（540x520，CustomTkinter 暗色主题）
-    - 顶部：绿色标题栏
-    - 中部：CTkTabview 分页（服务状态 / 进程管理 / SFTP 设置）
-    - 底部：打开 Web / 退出
-    """
+    """主面板窗口（PyQt6，现代暗色主题，580×580）"""
 
     def __init__(self):
-        import customtkinter as ctk
+        from PyQt6.QtWidgets import (
+            QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+            QLabel, QPushButton, QTabWidget, QFrame, QListWidget,
+            QSpinBox, QMessageBox, QCheckBox, QSystemTrayIcon, QMenu,
+            QSizePolicy,
+        )
+        from PyQt6.QtCore import Qt, QTimer, QRect
+        from PyQt6.QtGui import QIcon, QAction, QPixmap, QImage
 
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        app = QApplication.instance()
+        self._QApplication = QApplication
+        self._QMainWindow = QMainWindow
+        self._QTimer = QTimer
+        self._QMessageBox = QMessageBox
+        self._Qt = Qt
+        self._QIcon = QIcon
+        self._QAction = QAction
 
-        self.root = ctk.CTk()
-        self.root.title(APP_NAME)
-        self.root.geometry("540x520")
-        self.root.resizable(False, False)
-        self._center_window()
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        W, H = 580, 580
+        self.win = QMainWindow()
+        self.win.setWindowTitle(APP_NAME)
+        self.win.setFixedSize(W, H)
+        self.win.setStyleSheet("""
+            /* === 全局 === */
+            QMainWindow { background-color: #090e1a; }
+            QWidget { font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif; font-size: 12px; }
+            QLabel { color: #cbd5e1; }
+
+            /* === 滚动条 === */
+            QScrollBar:vertical { background: transparent; width: 5px; margin: 0; }
+            QScrollBar::handle:vertical { background: #334155; border-radius: 3px; min-height: 24px; }
+            QScrollBar::handle:vertical:hover { background: #475569; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+            /* === Tab 组件 === */
+            QTabWidget::pane { border: none; background: transparent; top: -1px; }
+            QTabBar::tab {
+                background: transparent; color: #64748b; padding: 9px 22px;
+                border: none; border-bottom: 2px solid transparent;
+                font-weight: 500; margin-right: 0;
+            }
+            QTabBar::tab:selected { color: #a5b4fc; border-bottom: 2px solid #818cf8; font-weight: 600; }
+            QTabBar::tab:hover:!selected { color: #94a3b8; }
+
+            /* === 按钮 - 主色调 === */
+            QPushButton {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #6366f1,stop:1 #4f46e5);
+                color: white; border: none; border-radius: 10px;
+                padding: 9px 22px; font-weight: 600; font-size: 11px;
+            }
+            QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #818cf8,stop:1 #6366f1); }
+            QPushButton:pressed { background: #4338ca; }
+
+            /* === 列表控件 === */
+            QListWidget {
+                background: #0c1421; color: #94a3b8; border: 1px solid #1e293b;
+                border-radius: 10px; padding: 6px; outline: none;
+                font-family: "SF Mono", Menlo, Monaco, Consolas, monospace; font-size: 10px;
+            }
+            QListWidget::item { padding: 5px 10px; border-radius: 6px; }
+            QListWidget::item:selected { background: rgba(99,102,241,64); color: #e2e8f0; }
+            QListWidget::item:hover { background: rgba(30,41,59,153); }
+
+            /* === 数字输入框 === */
+            QSpinBox {
+                background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+                border-radius: 10px; padding: 7px 14px;
+                font-family: "SF Mono", Menlo, Monaco, Consolas, monospace; font-size: 12px;
+            }
+            QSpinBox:hover { border-color: #6366f1; }
+            QSpinBox:focus { border-color: #818cf8; }
+            QSpinBox::up-button, QSpinBox::down-button {
+                background: #334155; border-radius: 4px; margin: 2px;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #475569; }
+
+            /* === 复选框 === */
+            QCheckBox { color: #cbd5e1; font-size: 11px; spacing: 8px; }
+            QCheckBox::indicator {
+                width: 16px; height: 16px; border: 2px solid #475569; border-radius: 4px;
+                background: transparent;
+            }
+            QCheckBox::indicator:checked {
+                background: #6366f1; border-color: #6366f1;
+            }
+
+            /* === 上下文菜单 === */
+            QMenu { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 4px; }
+            QMenu::item { padding: 6px 24px; border-radius: 6px; }
+            QMenu::item:selected { background-color: #334155; }
+            QMenu::separator { height: 1px; background: #334155; margin: 4px 8px; }
+
+            /* === 提示框 === */
+            QToolTip { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 4px 8px; }
+        """)
 
         # 图标
+        self._qicon = self._make_qicon()
+        if self._qicon:
+            self.win.setWindowIcon(self._qicon)
+
+        central = QWidget()
+        self.win.setCentralWidget(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ---- 顶部标题栏 ----
+        header = QFrame()
+        header.setFixedHeight(56)
+        header.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 #0f172a, stop:0.5 #1a2440, stop:1 #0f172a);
+                border-bottom: 1px solid #1e293b;
+            }
+        """)
+        hdr_layout = QHBoxLayout(header)
+        hdr_layout.setContentsMargins(20, 0, 20, 0)
+        hdr_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Logo 图标标签
+        logo_lbl = QLabel("🔑")
+        logo_lbl.setStyleSheet("font-size: 18px; border: none;")
+        hdr_layout.addWidget(logo_lbl)
+        hdr_layout.addSpacing(8)
+
+        title_lbl = QLabel("SSH Key Manager")
+        title_lbl.setStyleSheet("color: #e2e8f0; font-size: 16px; font-weight: 700; border: none;")
+        hdr_layout.addWidget(title_lbl)
+        hdr_layout.addStretch()
+
+        # 版本号标签（从 VERSION 文件读取）
+        ver_str = "v1.0"
         try:
-            self.icon_img = _create_icon_image()
-            if self.icon_img is not None:
-                self.tk_icon = _icon_to_tk_photo(self.icon_img)
-                self.root.iconphoto(False, self.tk_icon)
+            ver_file = ROOT_DIR / "VERSION"
+            if ver_file.exists():
+                ver_str = "v" + ver_file.read_text().strip()
         except Exception:
             pass
+        self._current_version = ver_str.lstrip("v")
+        ver_lbl = QLabel(ver_str)
+        ver_lbl.setStyleSheet("color: #475569; font-size: 10px; border: none;")
+        hdr_layout.addWidget(ver_lbl)
+        root.addWidget(header)
 
-        # ---- 顶部标题（深色融合，不再抢眼）----
-        header = ctk.CTkFrame(self.root, height=52, fg_color="#1e293b")
-        header.pack(fill="x")
-        header.pack_propagate(False)
-        ctk.CTkLabel(
-            header, text="SSH Key Manager",
-            font=("Microsoft YaHei UI", 15, "bold"),
-            text_color="#e2e8f0",
-        ).pack(expand=True)
-
-        # ---- CTkTabview 分页 ----
-        self.tabview = ctk.CTkTabview(self.root, height=380)
-        self.tabview.pack(fill="both", expand=True, padx=14, pady=(10, 6))
-
-        self.tabview.add("服务状态")
-        self.tabview.add("进程管理")
-        self.tabview.add("SFTP 设置")
+        # ---- Tab 分页 ----
+        self.tabs = QTabWidget()
+        self.tabs.setFixedHeight(420)
+        root.addWidget(self.tabs)
 
         self._build_tab_status()
         self._build_tab_processes()
         self._build_tab_sftp()
 
-        # ---- 底部栏 ----
-        bottom = ctk.CTkFrame(self.root, fg_color="transparent")
-        bottom.pack(fill="x", padx=14, pady=(4, 12))
+        # ---- 底部按钮栏 ----
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(16, 8, 16, 16)
+        bottom.setSpacing(10)
 
-        btn_open = ctk.CTkButton(
-            bottom, text="打开 Web 界面", font=("Microsoft YaHei UI", 11),
-            corner_radius=8, height=36,
-            command=self._open_web,
-        )
-        btn_open.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        btn_open = QPushButton("🌐  打开 Web 界面")
+        btn_open.clicked.connect(self._open_web)
+        bottom.addWidget(btn_open)
 
-        btn_quit = ctk.CTkButton(
-            bottom, text="退出程序", font=("Microsoft YaHei UI", 11),
-            fg_color="#475569", hover_color="#334155",
-            corner_radius=8, height=36,
-            command=self._quit,
-        )
-        btn_quit.pack(side="left", expand=True, fill="x", padx=(6, 0))
+        btn_quit = QPushButton("退出程序")
+        btn_quit.setObjectName("btnQuit")
+        btn_quit.setStyleSheet("""
+            QPushButton#btnQuit {
+                background: transparent; color: #64748b; border: 1px solid #334155;
+                border-radius: 10px; padding: 9px 22px; font-weight: 500;
+            }
+            QPushButton#btnQuit:hover { background: rgba(239,68,68,38); color: #f87171; border-color: #ef4444; }
+        """)
+        btn_quit.clicked.connect(self._quit)
+        bottom.addWidget(btn_quit)
+        root.addLayout(bottom)
 
+        # 居中显示
+        screen = app.primaryScreen().geometry()
+        x = (screen.width() - W) // 2
+        y = (screen.height() - H) // 2 - 40
+        self.win.move(x, y)
+
+        # 关闭 → 最小化到托盘
+        self.win.closeEvent = lambda e: (e.ignore(), self.win.hide())
+
+        # ---- 系统托盘 ----
+        self._setup_tray()
+
+        # ---- 轮询定时器 ----
+        self._sse_timer = QTimer()
+        self._sse_timer.timeout.connect(self._poll_sse)
+        self._sse_timer.start(2000)
+
+        self._proc_timer = QTimer()
+        self._proc_timer.timeout.connect(self._poll_processes)
+        self._proc_timer.start(5000)
+
+        # 首次默认刷新进程列表
+        self._refresh_processes()
+
+        # 首次默认刷新 SSE / 会话状态
         self._poll_sse()
-        self._poll_processes()
+
+        # 启动后延迟检查更新
+        self._QTimer.singleShot(3000, self._check_update)
+
+    def _make_qicon(self):
+        """从 PIL Image 生成 QIcon"""
+        try:
+            from PIL.ImageQt import ImageQt
+            img = _create_icon_image()
+            if img is None:
+                return None
+            qimg = ImageQt(img)
+            return QIcon(QPixmap.fromImage(qimg))
+        except Exception:
+            return None
+
+    def _setup_tray(self):
+        """QSystemTrayIcon 系统托盘"""
+        if not self._qicon:
+            return
+        tray = QSystemTrayIcon(self._qicon, self.win)
+        tray.setToolTip(APP_NAME)
+
+        menu = QMenu()
+        act_open = QAction("打开主面板", menu)
+        act_open.triggered.connect(lambda: (self.win.show(), self.win.raise_()))
+        menu.addAction(act_open)
+
+        act_web = QAction("打开 Web 界面", menu)
+        act_web.triggered.connect(self._open_web)
+        menu.addAction(act_web)
+        menu.addSeparator()
+
+        if sys.platform.startswith("win"):
+            self._tray_autostart = QAction("开机自启", menu)
+            self._tray_autostart.setCheckable(True)
+            self._tray_autostart.setChecked(_is_autostart_enabled())
+            self._tray_autostart.triggered.connect(self._toggle_autostart_tray)
+            menu.addAction(self._tray_autostart)
+            menu.addSeparator()
+
+        act_quit = QAction("退出程序", menu)
+        act_quit.triggered.connect(self._quit)
+        menu.addAction(act_quit)
+
+        tray.setContextMenu(menu)
+        tray.activated.connect(lambda reason: (
+            self.win.show(), self.win.raise_()
+        ) if reason == QSystemTrayIcon.ActivationReason.DoubleClick else None)
+        tray.show()
+        self._tray = tray
 
     # ======================== 页1：服务状态 ========================
 
     def _build_tab_status(self):
-        import customtkinter as ctk
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox, QFrame
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QCursor
 
-        tab = self.tabview.tab("服务状态")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
 
-        # ---- 服务地址（紧凑单行，不占整张卡片）----
-        addr_row = ctk.CTkFrame(tab, fg_color="transparent")
-        addr_row.pack(fill="x", padx=8, pady=(8, 6))
+        # ---- 服务地址卡片 ----
+        addr_card = QFrame()
+        addr_card.setStyleSheet("""
+            QFrame {
+                background: #0f172a; border: 1px solid #1e293b;
+                border-radius: 12px;
+            }
+        """)
+        addr_layout = QVBoxLayout(addr_card)
+        addr_layout.setContentsMargins(14, 10, 14, 10)
+        addr_layout.setSpacing(6)
 
-        ctk.CTkLabel(
-            addr_row, text="服务地址",
-            font=("Microsoft YaHei UI", 9),
-            text_color="#94a3b8",
-        ).pack(side="left")
+        addr_header = QHBoxLayout()
+        status_dot = QLabel("●")
+        status_dot.setStyleSheet("color: #10b981; font-size: 10px; border: none;")
+        addr_header.addWidget(status_dot)
+        addr_header.addWidget(QLabel("服务运行中"))
+        addr_header.addStretch()
+        addr_layout.addLayout(addr_header)
 
-        addr_url = ctk.CTkLabel(
-            addr_row, text=APP_URL,
-            font=("Consolas", 12, "bold"),
-            text_color="#38bdf8",
-            cursor="hand2",
-        )
-        addr_url.pack(side="left", padx=(6, 0))
-        addr_url.bind("<Button-1>", lambda e: webbrowser.open(APP_URL))
+        url_row = QHBoxLayout()
+        url_lbl = QLabel(APP_URL)
+        url_lbl.setStyleSheet("""
+            color: #818cf8; font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+            font-size: 13px; font-weight: 600; text-decoration: underline; border: none;
+        """)
+        url_lbl.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        def _on_url_click(event):
+            webbrowser.open(APP_URL)
+        url_lbl.mousePressEvent = _on_url_click
+        url_row.addWidget(url_lbl)
+        url_row.addStretch()
+        addr_layout.addLayout(url_row)
+        layout.addWidget(addr_card)
 
-        # ---- 统计卡片行（SSE + WebSSH 并排）----
-        stats_row = ctk.CTkFrame(tab, fg_color="transparent")
-        stats_row.pack(fill="x", padx=8, pady=(0, 6))
+        # ---- 统计卡片行 ----
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(12)
 
-        # SSE 卡片
-        sse_card = ctk.CTkFrame(stats_row, corner_radius=10,
-                                fg_color="#1e293b", border_color="#334155", border_width=1)
-        sse_card.pack(side="left", fill="both", expand=True, padx=(0, 4))
+        def make_card(title, color, icon):
+            card = QFrame()
+            card.setStyleSheet(f"""
+                QFrame {{
+                    background: #0f172a; border: 1px solid #1e293b;
+                    border-radius: 14px;
+                }}
+            """)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(16, 12, 16, 12)
+            card_layout.setSpacing(6)
 
-        self.lbl_sse_num = ctk.CTkLabel(
-            sse_card, text="—",
-            font=("Consolas", 26, "bold"),
-            text_color="#38bdf8",
-        )
-        self.lbl_sse_num.pack(anchor="w", padx=14, pady=(12, 0))
+            icon_lbl = QLabel(icon)
+            icon_lbl.setStyleSheet(f"color: {color}; font-size: 20px; border: none;")
+            card_layout.addWidget(icon_lbl)
 
-        ctk.CTkLabel(
-            sse_card, text="SSE 活跃连接",
-            font=("Microsoft YaHei UI", 8),
-            text_color="#94a3b8",
-        ).pack(anchor="w", padx=14, pady=(0, 12))
+            num_lbl = QLabel("—")
+            num_lbl.setStyleSheet(f"""
+                color: {color}; font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+                font-size: 28px; font-weight: 700; border: none;
+            """)
+            card_layout.addWidget(num_lbl)
 
-        # WebSSH 卡片
-        ssh_card = ctk.CTkFrame(stats_row, corner_radius=10,
-                                fg_color="#1e293b", border_color="#334155", border_width=1)
-        ssh_card.pack(side="left", fill="both", expand=True, padx=(4, 0))
+            title_lbl = QLabel(title)
+            title_lbl.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+            card_layout.addWidget(title_lbl)
+            return card, num_lbl
 
-        self.lbl_session_num = ctk.CTkLabel(
-            ssh_card, text="—",
-            font=("Consolas", 26, "bold"),
-            text_color="#a78bfa",
-        )
-        self.lbl_session_num.pack(anchor="w", padx=14, pady=(12, 0))
+        sse_card, self.lbl_sse_num = make_card("SSE 活跃连接", "#38bdf8", "📡")
+        ssh_card, self.lbl_session_num = make_card("WebSSH 活跃会话", "#a78bfa", "💻")
+        stats_row.addWidget(sse_card)
+        stats_row.addWidget(ssh_card)
+        layout.addLayout(stats_row)
 
-        ctk.CTkLabel(
-            ssh_card, text="WebSSH 活跃会话",
-            font=("Microsoft YaHei UI", 8),
-            text_color="#94a3b8",
-        ).pack(anchor="w", padx=14, pady=(0, 12))
+        # ---- 清理按钮 ----
+        btn_cleanup = QPushButton("🧹  清理僵死 SSE 连接")
+        btn_cleanup.setObjectName("btnGhost")
+        btn_cleanup.setStyleSheet("""
+            QPushButton#btnGhost {
+                background: transparent; color: #94a3b8; border: 1px solid #334155;
+                border-radius: 10px; padding: 9px 16px; font-weight: 500;
+            }
+            QPushButton#btnGhost:hover { background: rgba(56,189,248,26); color: #38bdf8; border-color: #38bdf8; }
+        """)
+        btn_cleanup.clicked.connect(self._cleanup_sse)
+        layout.addWidget(btn_cleanup)
 
-        # ---- SSE 清理按钮 ----
-        btn_cleanup = ctk.CTkButton(
-            tab, text="清理僵死 SSE 连接",
-            command=self._cleanup_sse,
-            fg_color="transparent", border_color="#475569",
-            border_width=1, text_color="#94a3b8",
-            corner_radius=8, height=30, font=("Microsoft YaHei UI", 9),
-            hover_color="#1e293b",
-        )
-        btn_cleanup.pack(fill="x", padx=8, pady=(4, 4))
+        self.lbl_sse_status = QLabel("")
+        self.lbl_sse_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+        layout.addWidget(self.lbl_sse_status)
 
-        self.var_sse_cleanup_status = ctk.StringVar(value="")
-        self.lbl_sse_status = ctk.CTkLabel(
-            tab, textvariable=self.var_sse_cleanup_status,
-            font=("Microsoft YaHei UI", 8), text_color="#94a3b8",
-        )
-        self.lbl_sse_status.pack(anchor="w", padx=12, pady=(0, 4))
+        # ---- 检查更新 ----
+        update_row = QHBoxLayout()
+        update_row.setSpacing(10)
+        btn_check_update = QPushButton("🔍  检查更新")
+        btn_check_update.setObjectName("btnGhost")
+        btn_check_update.setStyleSheet("""
+            QPushButton#btnGhost {
+                background: transparent; color: #94a3b8; border: 1px solid #334155;
+                border-radius: 10px; padding: 9px 16px; font-weight: 500;
+            }
+            QPushButton#btnGhost:hover { background: rgba(16,185,129,0.1); color: #10b981; border-color: #10b981; }
+        """)
+        btn_check_update.clicked.connect(self._check_update)
+        update_row.addWidget(btn_check_update)
+        self.lbl_update_status = QLabel("")
+        self.lbl_update_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+        self.lbl_update_status.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        update_row.addWidget(self.lbl_update_status, 1)
+        layout.addLayout(update_row)
 
-        # ---- 开机自启（仅 Windows）----
+        # 开机自启（Windows only）
         if sys.platform.startswith("win"):
-            self.autostart_var = ctk.BooleanVar(value=_is_autostart_enabled())
-            cb = ctk.CTkCheckBox(
-                tab, text="开机自动启动", variable=self.autostart_var,
-                command=self._toggle_autostart,
-                font=("Microsoft YaHei UI", 9),
-                checkbox_width=18, checkbox_height=18,
-            )
-            cb.pack(anchor="w", padx=12, pady=(12, 4))
+            self.cb_autostart = QCheckBox("开机自动启动")
+            self.cb_autostart.setChecked(_is_autostart_enabled())
+            self.cb_autostart.stateChanged.connect(self._toggle_autostart)
+            layout.addWidget(self.cb_autostart)
+
+        layout.addStretch()
+        self.tabs.addTab(tab, "📊  服务状态")
 
     # ======================== 页2：进程管理 ========================
 
     def _build_tab_processes(self):
-        import customtkinter as ctk
-        import tkinter as tk
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
 
-        tab = self.tabview.tab("进程管理")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        ctk.CTkLabel(
-            tab, text="管理本程序相关的 Python 进程",
-            font=("Microsoft YaHei UI", 9), text_color="gray60",
-        ).pack(anchor="w", padx=8, pady=(4, 6))
+        header_row = QHBoxLayout()
+        header_row.addWidget(QLabel("🐍  Python 进程管理"))
+        header_row.addStretch()
+        layout.addLayout(header_row)
 
-        # 列表框（CTk 无 Listbox，用 tk.Listbox + 暗色主题）
-        list_frame = ctk.CTkFrame(tab, corner_radius=8)
-        list_frame.pack(fill="both", expand=True, padx=8, pady=(0, 6))
+        self.proc_listbox = QListWidget()
+        layout.addWidget(self.proc_listbox)
 
-        self.proc_listbox = tk.Listbox(
-            list_frame, font=("Consolas", 8),
-            selectmode="extended", height=10,
-            bg="#1e1e1e", fg="#d4d4d4", selectbackground="#3b82f6",
-            selectforeground="white", relief="flat", borderwidth=0,
-            highlightthickness=0,
-        )
-        self.proc_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
 
-        scrollbar = ctk.CTkScrollbar(list_frame, command=self.proc_listbox.yview)
-        scrollbar.pack(side="right", fill="y", pady=4)
-        self.proc_listbox.config(yscrollcommand=scrollbar.set)
+        btn_refresh = QPushButton("🔄  刷新列表")
+        btn_refresh.clicked.connect(self._refresh_processes)
+        btn_row.addWidget(btn_refresh)
 
-        # 按钮行
-        btn_row = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_row.pack(fill="x", padx=8, pady=(0, 4))
+        btn_kill = QPushButton("⛔  结束选中进程")
+        btn_kill.setObjectName("btnDanger")
+        btn_kill.setStyleSheet("""
+            QPushButton#btnDanger {
+                background: transparent; color: #f87171; border: 1px solid #7f1d1d;
+                border-radius: 10px; padding: 9px 16px; font-weight: 500;
+            }
+            QPushButton#btnDanger:hover { background: rgba(239,68,68,51); color: #fca5a5; }
+        """)
+        btn_kill.clicked.connect(self._kill_selected_processes)
+        btn_row.addWidget(btn_kill)
+        layout.addLayout(btn_row)
 
-        ctk.CTkButton(btn_row, text="刷新列表", command=self._refresh_processes,
-                       corner_radius=8, height=30, font=("Microsoft YaHei UI", 9)
-                       ).pack(side="left", padx=(0, 6))
+        self.lbl_proc_status = QLabel("")
+        self.lbl_proc_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+        layout.addWidget(self.lbl_proc_status)
 
-        ctk.CTkButton(btn_row, text="结束选中进程", command=self._kill_selected_processes,
-                       corner_radius=8, height=30, font=("Microsoft YaHei UI", 9),
-                       fg_color="#7f1d1d", hover_color="#991b1b").pack(side="left")
-
-        self.var_proc_status = ctk.StringVar(value="点击「刷新列表」加载进程")
-        ctk.CTkLabel(
-            tab, textvariable=self.var_proc_status,
-            font=("Microsoft YaHei UI", 8), text_color="gray60",
-        ).pack(anchor="w", padx=12, pady=(2, 4))
+        self.tabs.addTab(tab, "📋  进程管理")
 
     # ======================== 页3：SFTP 设置 ========================
 
     def _build_tab_sftp(self):
-        import customtkinter as ctk
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QFrame
         import modules.config as _cfg
 
-        tab = self.tabview.tab("SFTP 设置")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
+
+        # ---- 下载限制卡片 ----
+        limit_card = QFrame()
+        limit_card.setStyleSheet("""
+            QFrame {
+                background: #0f172a; border: 1px solid #1e293b;
+                border-radius: 12px;
+            }
+        """)
+        limit_layout = QVBoxLayout(limit_card)
+        limit_layout.setContentsMargins(14, 14, 14, 14)
+        limit_layout.setSpacing(12)
+
+        desc_lbl = QLabel("通过 WebSSH 下载文件时，单文件大小上限")
+        desc_lbl.setStyleSheet("color: #cbd5e1; font-size: 12px; border: none;")
+        limit_layout.addWidget(desc_lbl)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        row.addWidget(QLabel("大小上限"))
         _cfg.load_config()
         current_mb = _cfg.get("sftp_max_download_mb", 100)
+        self.spin_sftp = QSpinBox()
+        self.spin_sftp.setRange(0, 9999)
+        self.spin_sftp.setValue(current_mb)
+        self.spin_sftp.setSuffix(" MB")
+        self.spin_sftp.setSingleStep(50)
+        self.spin_sftp.setFixedWidth(140)
+        row.addWidget(self.spin_sftp)
+        row.addStretch()
+        limit_layout.addLayout(row)
 
-        ctk.CTkLabel(
-            tab, text="通过 WebSSH 下载文件时，单文件大小上限：",
-            font=("Microsoft YaHei UI", 9),
-        ).pack(anchor="w", padx=8, pady=(8, 10))
+        layout.addWidget(limit_card)
 
-        row = ctk.CTkFrame(tab, fg_color="transparent")
-        row.pack(anchor="w", padx=8, pady=(0, 12))
+        # ---- 保存按钮 ----
+        btn_save = QPushButton("💾  保存设置")
+        btn_save.clicked.connect(self._save_sftp_limit)
+        layout.addWidget(btn_save)
 
-        ctk.CTkLabel(row, text="大小上限：", font=("Microsoft YaHei UI", 9, "bold")).pack(
-            side="left")
+        self.lbl_sftp_status = QLabel("")
+        self.lbl_sftp_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+        layout.addWidget(self.lbl_sftp_status)
 
-        self.var_sftp_mb = ctk.IntVar(value=current_mb)
+        # ---- 提示 ----
+        tip_card = QFrame()
+        tip_card.setStyleSheet("""
+            QFrame {
+                background: rgba(245,158,11,20); border: 1px solid rgba(245,158,11,51);
+                border-radius: 10px;
+            }
+        """)
+        tip_layout = QHBoxLayout(tip_card)
+        tip_layout.setContentsMargins(10, 8, 10, 8)
+        tip_layout.setSpacing(8)
+        tip_icon = QLabel("💡")
+        tip_icon.setStyleSheet("font-size: 14px; border: none;")
+        tip_layout.addWidget(tip_icon)
+        note = QLabel("修改后即时生效，已进行中的下载不受影响。\n设置为 0 表示不限制（谨慎使用）。")
+        note.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
+        tip_layout.addWidget(note)
+        layout.addWidget(tip_card)
 
-        def _inc():
-            v = self.var_sftp_mb.get()
-            if v < 2048:
-                self.var_sftp_mb.set(v + 50)
+        layout.addStretch()
 
-        def _dec():
-            v = self.var_sftp_mb.get()
-            if v > 1:
-                self.var_sftp_mb.set(v - 50)
-
-        btn_dec = ctk.CTkButton(row, text="−", width=28, height=24,
-                                 command=_dec, corner_radius=6,
-                                 font=("Consolas", 10, "bold"),
-                                 fg_color="gray30", hover_color="gray40")
-        btn_dec.pack(side="left", padx=(0, 4))
-
-        entry = ctk.CTkEntry(row, textvariable=self.var_sftp_mb, width=70,
-                              font=("Consolas", 10), corner_radius=6,
-                              justify="center")
-        entry.pack(side="left", padx=4)
-
-        btn_inc = ctk.CTkButton(row, text="+", width=28, height=24,
-                                 command=_inc, corner_radius=6,
-                                 font=("Consolas", 10, "bold"),
-                                 fg_color="gray30", hover_color="gray40")
-        btn_inc.pack(side="left", padx=(4, 6))
-
-        ctk.CTkLabel(row, text="MB", font=("Microsoft YaHei UI", 9)).pack(side="left")
-
-        save_btn = ctk.CTkButton(
-            tab, text="保存设置", font=("Microsoft YaHei UI", 10),
-            corner_radius=8, height=32,
-            command=self._save_sftp_limit,
-        )
-        save_btn.pack(anchor="w", padx=8, pady=(0, 12))
-
-        self.var_sftp_status = ctk.StringVar(value="")
-        self.lbl_sftp_status = ctk.CTkLabel(
-            tab, textvariable=self.var_sftp_status,
-            font=("Microsoft YaHei UI", 8),
-        )
-        self.lbl_sftp_status.pack(anchor="w", padx=8)
-
-        ctk.CTkFrame(tab, height=1, fg_color="gray30").pack(fill="x", padx=8, pady=10)
-
-        note = ctk.CTkLabel(
-            tab,
-            text="提示：修改后即时生效，已在进行中的下载不受影响。\n"
-                  "设置为 0 表示不限制（谨慎使用，大文件可能耗尽内存）。",
-            font=("Microsoft YaHei UI", 8), text_color="gray60",
-            justify="left",
-        )
-        note.pack(anchor="w", padx=8, pady=(4, 0))
+        self.tabs.addTab(tab, "⚙️  SFTP 设置")
 
     # ======================== 窗口行为 ========================
-
-    def _center_window(self):
-        self.root.update_idletasks()
-        w, h = 540, 520
-        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        self.root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2 - 40}")
-
-    def _on_close(self):
-        self.root.withdraw()
-
-    def show(self):
-        self.root.after(0, lambda: self.root.deiconify())
 
     def _open_web(self):
         webbrowser.open(APP_URL)
 
-    def _toggle_autostart(self):
-        if self.autostart_var.get():
+    def _toggle_autostart(self, state):
+        if state:
             _enable_autostart()
         else:
             _disable_autostart()
 
+    def _toggle_autostart_tray(self, checked):
+        if checked:
+            _enable_autostart()
+        else:
+            _disable_autostart()
+        if hasattr(self, 'cb_autostart'):
+            self.cb_autostart.setChecked(_is_autostart_enabled())
+
     def _quit(self):
         _cleanup_and_exit()
-        if _tray_icon:
-            _tray_icon.stop()
-        self.root.after(0, self.root.destroy)
+        from PyQt6.QtWidgets import QApplication
+        QApplication.instance().quit()
+
+    def show(self):
+        self.win.show()
+        self.win.raise_()
 
     def run(self):
-        self.root.mainloop()
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        self.win.show()
+        app.exec()
 
     # ======================== SSE 状态轮询 ========================
 
     def _poll_sse(self):
-        """每 2 秒刷新 SSE 连接数和 WebSSH 会话数。"""
         try:
-            from modules.server import _sse_queues
             count = len(_sse_queues)
-            self.lbl_sse_num.configure(text=str(count))
-        except Exception:
-            self.lbl_sse_num.configure(text="—")
-
+            self.lbl_sse_num.setText(str(count))
+        except Exception as e:
+            logger.warning(f"SSE 轮询失败: {e}")
+            self.lbl_sse_num.setText("—")
         try:
-            from modules.webssh_sessions import _ssh_sessions
+            from modules.webssh import _ssh_sessions
             count = len(_ssh_sessions)
-            self.lbl_session_num.configure(text=str(count))
-        except Exception:
-            self.lbl_session_num.configure(text="—")
-
-        self.root.after(2000, self._poll_sse)
+            self.lbl_session_num.setText(str(count))
+        except Exception as e:
+            logger.warning(f"SSH 会话轮询失败: {e}")
+            self.lbl_session_num.setText("—")
 
     def _cleanup_sse(self):
-        """清理僵死 SSE 连接"""
-        import tkinter.messagebox as mbox
+        from PyQt6.QtWidgets import QMessageBox
         try:
             from modules.common import _sse_cleanup_stale, get_sse_queue_count
             before = get_sse_queue_count()
             removed = _sse_cleanup_stale()
             after = get_sse_queue_count()
-            self.lbl_sse_num.configure(text=str(after))
-            if removed > 0:
-                self.var_sse_cleanup_status.set(f"已清理 {removed} 个僵死连接")
-            else:
-                self.var_sse_cleanup_status.set("没有需要清理的连接")
-            self.root.after(2000, lambda: self.var_sse_cleanup_status.set(""))
+            self.lbl_sse_num.setText(str(after))
+            msg = f"已清理 {removed} 个僵死连接" if removed > 0 else "没有需要清理的连接"
+            self.lbl_sse_status.setText(msg)
+            self._QTimer.singleShot(2000, lambda: self.lbl_sse_status.setText(""))
         except Exception as e:
-            mbox.showerror("清理失败", str(e))
+            QMessageBox.critical(self.win, "清理失败", str(e))
+
+    def _check_update(self):
+        """检查 GitHub 最新版本"""
+        self.lbl_update_status.setText("检查中…")
+        self._QTimer.singleShot(300, self._do_check_update)
+
+    def _do_check_update(self):
+        import urllib.request, json, ssl
+
+        GITHUB_API = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
+        RELEASES_URL = "https://github.com/tangjin2580/sshkeys/releases/latest"
+
+        def _parse_version(v: str) -> tuple:
+            """将 'v1.0.21' 或 '1.0.21' 转为可比较的元组"""
+            v = v.lstrip("v").strip()
+            try:
+                return tuple(int(x) for x in v.split("."))
+            except ValueError:
+                return (0,)
+
+        try:
+            ctx = ssl.create_default_context()
+            req = urllib.request.Request(GITHUB_API, headers={
+                "User-Agent": "SSH-Key-Manager",
+                "Accept": "application/vnd.github+json",
+            })
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            latest_tag = data.get("tag_name", "")
+            latest_ver = _parse_version(latest_tag)
+            current_ver = _parse_version(self._current_version)
+            html_url = data.get("html_url", RELEASES_URL)
+
+            if latest_ver > current_ver:
+                msg = f"🆕 有新版本 {latest_tag} → 点击下载"
+                self.lbl_update_status.setStyleSheet(
+                    "color: #10b981; font-size: 10px; border: none; text-decoration: underline;")
+                self.lbl_update_status.setText(msg)
+                def _open_update_url(event):
+                    webbrowser.open(html_url)
+                self.lbl_update_status.mousePressEvent = _open_update_url
+            elif latest_ver == current_ver:
+                self.lbl_update_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+                self.lbl_update_status.setText(f"✅ 已是最新版本 {latest_tag}")
+                self.lbl_update_status.mousePressEvent = None
+            else:
+                self.lbl_update_status.setStyleSheet("color: #64748b; font-size: 10px; border: none;")
+                self.lbl_update_status.setText(f"当前 {self._current_version}（比最新 {latest_tag} 还新）")
+                self.lbl_update_status.mousePressEvent = None
+        except Exception as e:
+            self.lbl_update_status.setStyleSheet("color: #f87171; font-size: 10px; border: none;")
+            self.lbl_update_status.setText(f"❌ 检查失败: {e}")
 
     # ======================== 进程管理 ========================
 
+    def _poll_processes(self):
+        if self.tabs.currentIndex() == 1:
+            self._refresh_processes()
+
     def _refresh_processes(self):
-        """刷新进程列表"""
-        self.proc_listbox.delete(0, "end")
+        self.proc_listbox.clear()
         self._proc_pids = []
         try:
             self._proc_pids = self._list_python_processes()
             if not self._proc_pids:
-                self.proc_listbox.insert("end", "未找到 Python 进程")
-                self.var_proc_status.set("未找到 Python 进程")
+                self.proc_listbox.addItem("未找到 Python 进程")
+                self.lbl_proc_status.setText("未找到 Python 进程")
             else:
-                for info in self._proc_pids:
-                    self.proc_listbox.insert(
-                        "end", f"PID {info['pid']:>6}  {info['mem']:>8} KB  {info['cmd'][:60]}")
-                self.var_proc_status.set(f"共 {len(self._proc_pids)} 个进程")
+                current_pid = os.getpid()
+                self._current_proc_index = None
+                for i, info in enumerate(self._proc_pids):
+                    is_current = info["pid"] == current_pid
+                    marker = "⭐ 本进程 " if is_current else "   "
+                    self.proc_listbox.addItem(
+                        f"{marker}PID {info['pid']:>6}  {info['mem']:>8} KB  {info['cmd'][:60]}")
+                    if is_current:
+                        self._current_proc_index = i
+                status_parts = [f"共 {len(self._proc_pids)} 个进程"]
+                if self._current_proc_index is not None:
+                    status_parts.append(f"⭐ = 当前进程 (PID {current_pid})")
+                self.lbl_proc_status.setText("  |  ".join(status_parts))
         except Exception as e:
-            self.proc_listbox.insert("end", f"刷新失败: {e}")
-            self.var_proc_status.set(f"错误: {e}")
+            self.proc_listbox.addItem(f"刷新失败: {e}")
+            self.lbl_proc_status.setText(f"错误: {e}")
 
     def _list_python_processes(self):
-        """
-        跨平台枚举 Python 相关进程。
-        Windows:  tasklist /fo csv /nh
-        Linux:    ps -ww -o pid=,rss=,args=
-        macOS:    ps -ww -o pid=,rss=,args=
-        返回 [{"pid":..., "cmd":..., "mem":...}, ...]
-        """
-        import sys
-        import subprocess
-        import csv
-        import io
-
-        is_win = sys.platform.startswith("win")
+        import sys as _sys, subprocess, csv, io
+        is_win = _sys.platform.startswith("win")
+        current_pid = os.getpid()
+        # 当前 Python 可执行文件名（如 python3.14、pythonw等）
+        py_basename = os.path.basename(_sys.executable).lower()
         results = []
-
         try:
             if is_win:
                 out = subprocess.check_output(
-                    "tasklist /fo csv /nh",
-                    shell=True, timeout=10,
+                    "tasklist /fo csv /nh", shell=True, timeout=10
                 ).decode("gbk", errors="replace")
                 reader = csv.reader(io.StringIO(out))
                 for row in reader:
                     if len(row) < 5:
                         continue
                     name = row[0].lower()
-                    if "python" not in name and "sshkeys" not in name:
+                    # 匹配 python / sshkeys / 当前可执行文件名
+                    if "python" not in name and "sshkeys" not in name and py_basename not in name:
                         continue
                     try:
                         pid = int(row[1])
@@ -703,186 +960,91 @@ class MainPanel:
                     except (ValueError, IndexError):
                         continue
                     results.append({"pid": pid, "cmd": row[0], "mem": mem_kb})
-
             else:
+                # 使用 ps aux 获取更全面的进程列表
                 out = subprocess.check_output(
-                    ["ps", "-ww", "-o", "pid=,rss=,args="],
-                    timeout=10,
+                    ["ps", "aux"], timeout=10
                 ).decode("utf-8", errors="replace")
-
+                header_skipped = False
                 for raw_line in out.strip().splitlines():
                     line = raw_line.strip()
-                    if not line or not line[:1].isdigit():
+                    if not line:
                         continue
-                    parts = line.split(None, 2)
-                    if len(parts) < 3:
+                    # 跳过 ps aux 的表头行
+                    if not header_skipped:
+                        header_skipped = True
+                        continue
+                    parts = line.split(None, 10)
+                    if len(parts) < 11:
                         continue
                     try:
-                        pid = int(parts[0])
-                        mem_kb = int(parts[1])
-                    except ValueError:
+                        pid = int(parts[1])
+                        mem_pct = parts[3]  # %MEM
+                        rss_kb = int(parts[5])  # RSS in KB
+                    except (ValueError, IndexError):
                         continue
-                    full_cmd = parts[2] if len(parts) > 2 else ""
+                    full_cmd = parts[10] if len(parts) > 10 else ""
                     combined = full_cmd.lower()
-                    if "python" not in combined and "sshkeys" not in combined:
+                    # 扩大匹配范围：python/python3/当前可执行文件/sshkeys/ssh keys/main.py
+                    if not any(kw in combined for kw in ["python", py_basename, "sshkeys", "main.py", "ssh_key_manager"]):
                         continue
-                    display_cmd = full_cmd[:80] if len(full_cmd) > 80 else full_cmd
-                    results.append({"pid": pid, "cmd": display_cmd, "mem": mem_kb})
-
+                    # 截断过长的命令用于显示
+                    display_cmd = full_cmd[:100] if len(full_cmd) > 100 else full_cmd
+                    results.append({"pid": pid, "cmd": display_cmd, "mem": rss_kb})
         except Exception as e:
-            print(f"[进程列表] 失败: {e}")
             return results
-
         results.sort(key=lambda x: x["pid"])
         return results
 
     def _kill_selected_processes(self):
-        """结束 Listbox 中选中的进程（跨平台，带确认弹窗）。"""
-        import sys
-        import tkinter.messagebox as mbox
+        from PyQt6.QtWidgets import QMessageBox
         import subprocess
-
-        sel = self.proc_listbox.curselection()
-        if not sel:
-            mbox.showwarning("提示", "请先选中要结束的进程")
+        items = self.proc_listbox.selectedItems()
+        if not items:
+            QMessageBox.warning(self.win, "提示", "请先选中要结束的进程")
             return
-
-        pids = [self._proc_pids[i]["pid"] for i in sel]
+        sel_rows = [self.proc_listbox.row(it) for it in items]
+        pids = [self._proc_pids[i]["pid"] for i in sel_rows]
+        current_pid = os.getpid()
+        # 检查是否选中了当前进程
+        if current_pid in pids:
+            QMessageBox.warning(
+                self.win, "无法操作",
+                f"不能结束当前进程 (PID {current_pid})，这是本程序自身。\n"
+                "如需退出程序，请使用底部「退出程序」按钮。"
+            )
+            return
         pid_str = ", ".join(str(p) for p in pids)
-
-        if not mbox.askyesno("确认",
-            f"确定要结束以下进程吗？\n\nPID: {pid_str}\n\n此操作不可撤销！"):
+        reply = QMessageBox.question(
+            self.win, "确认",
+            f"确定要结束以下进程吗？\n\nPID: {pid_str}\n\n此操作不可撤销！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
             return
-
-        is_win = sys.platform.startswith("win")
-        killed, failed = [], []
-
         for pid in pids:
             try:
-                if is_win:
-                    r = subprocess.run(
-                        f"taskkill /PID {pid} /F",
-                        shell=True, capture_output=True, timeout=10,
-                    )
-                    if r.returncode == 0:
-                        killed.append(str(pid))
-                    else:
-                        err = r.stderr.decode("gbk", errors="replace").strip()[:60]
-                        failed.append(f"PID {pid}（{err or '拒绝访问'})")
+                if sys.platform.startswith("win"):
+                    subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                                   capture_output=True, timeout=5)
                 else:
-                    r = subprocess.run(
-                        ["kill", "-9", str(pid)],
-                        capture_output=True, timeout=10,
-                    )
-                    if r.returncode == 0:
-                        killed.append(str(pid))
-                    else:
-                        err = r.stderr.decode("utf-8", errors="replace").strip()[:60]
-                        failed.append(f"PID {pid}（{err or '无权限'})")
+                    os.kill(pid, signal.SIGTERM)
             except Exception as e:
-                failed.append(f"PID {pid}（{e}）")
-
-        parts = []
-        if killed:
-            parts.append(f"已结束：{', '.join(killed)}")
-        if failed:
-            parts.append(f"失败：{', '.join(failed)}")
-        mbox.showinfo("结束进程", "\n".join(parts) or "未结束任何进程")
-        self._refresh_processes()
+                logger.warning(f"无法结束 PID {pid}: {e}")
+        self._QTimer.singleShot(500, self._refresh_processes)
 
     # ======================== SFTP 设置 ========================
 
     def _save_sftp_limit(self):
-        """保存 SFTP 大小限制到 config.json。"""
+        import modules.config as _cfg
+        from PyQt6.QtWidgets import QMessageBox
         try:
-            mb = self.var_sftp_mb.get()
-            if mb < 0:
-                raise ValueError("不能为负数")
-        except Exception:
-            self.var_sftp_status.set("请输入有效的数字（1~2048）")
-            self.lbl_sftp_status.configure(text_color="#f87171")
-            return
-
-        try:
-            import modules.config as _cfg
-            _cfg.set("sftp_max_download_mb", mb)
-            self.var_sftp_status.set(f"已保存，新的上限为 {mb} MB（即时生效）")
-            self.lbl_sftp_status.configure(text_color="#38bdf8")
+            val = self.spin_sftp.value()
+            _cfg.set("sftp_max_download_mb", val)
+            self.lbl_sftp_status.setText(f"已保存：{val} MB")
+            self._QTimer.singleShot(2000, lambda: self.lbl_sftp_status.setText(""))
         except Exception as e:
-            self.var_sftp_status.set(f"保存失败：{e}")
-            self.lbl_sftp_status.configure(text_color="#f87171")
-
-    # ======================== 进程列表轮询 ========================
-
-    def _poll_processes(self):
-        """每 5 秒自动刷新进程列表（仅在「进程管理」页可见时）。"""
-        try:
-            if self.tabview.get() == "进程管理":
-                self._refresh_processes()
-        except Exception:
-            pass
-        self.root.after(5000, self._poll_processes)
-
-
-# ==================== 系统托盘 ====================
-
-def _start_tray(icon_img):
-    """启动系统托盘（后台线程）"""
-    global _tray_icon
-    try:
-        from pystray import Icon, Menu, MenuItem
-    except ImportError as e:
-        logger.warning(f"[主程序] pystray 不可用，系统托盘功能禁用: {e}")
-        return
-
-    def _tray_open(icon, item):
-        """双击托盘 → 显示主面板"""
-        if _main_window:
-            _main_window.show()
-
-    def _tray_quit(icon, item):
-        """托盘退出 → 退出程序"""
-        _cleanup_and_exit()
-        icon.stop()
-        if _main_window:
-            _main_window.root.after(0, _main_window.root.destroy)
-
-    # 构建托盘菜单（自启选项仅 Windows）
-    menu_items = [
-        MenuItem("打开主面板", _tray_open, default=True),
-        MenuItem("打开 Web 界面", lambda i, it: webbrowser.open(APP_URL)),
-        Menu.SEPARATOR,
-    ]
-    if sys.platform.startswith("win"):
-        menu_items.append(
-            MenuItem(
-                "开机自启",
-                lambda i, it: _toggle_autostart_tray(i),
-                checked=lambda item: _is_autostart_enabled(),
-            )
-        )
-        menu_items.append(Menu.SEPARATOR)
-    menu_items.append(MenuItem("退出程序", _tray_quit))
-
-    _tray_icon = Icon(
-        APP_NAME,
-        icon=icon_img,
-        title=APP_NAME,
-        menu=Menu(*menu_items),
-    )
-    _tray_icon.run()
-
-
-def _toggle_autostart_tray(icon):
-    """托盘菜单切换开机自启"""
-    if _is_autostart_enabled():
-        _disable_autostart()
-    else:
-        _enable_autostart()
-    icon.update_menu()
-    # 同步主面板复选框
-    if _main_window:
-        _main_window.root.after(0, lambda: _main_window.autostart_var.set(_is_autostart_enabled()))
+            QMessageBox.critical(self.win, "保存失败", str(e))
 
 
 # ==================== 主入口 ====================
@@ -902,7 +1064,6 @@ def main():
                         help=f"绑定地址（默认 {HOST}，局域网可改为 0.0.0.0）")
     args = parser.parse_args()
 
-    # 用命令行参数覆盖全局变量
     HOST = args.host
     PORT = args.port
     APP_URL = f"http://{HOST}:{PORT}"
@@ -916,21 +1077,19 @@ def main():
     elif args.dev:
         run_mode = "开发（热重载）"
     else:
-        run_mode = "生产（GUI + 托盘）"
+        run_mode = "生产（PyQt6 GUI + 托盘）"
     logger.info(f"  运行模式: {run_mode}")
     logger.info("=" * 50)
 
     app = create_app()
 
     if args.dev:
-        # 开发模式：Flask 内置服务器 + 热重载
         logger.info("开发模式：Flask 开发服务器")
         threading.Timer(1.5, lambda: webbrowser.open(APP_URL)).start()
         app.run(host=HOST, port=PORT, debug=True, use_reloader=True)
         return
 
     if args.headless:
-        # 无头模式：仅启动 Waitress，不启动 GUI/托盘
         logger.info("无头模式：仅启动 Web 服务器")
         logger.info(f"访问: {APP_URL}")
         logger.info("按 Ctrl+C 停止服务")
@@ -941,7 +1100,7 @@ def main():
             logger.info("服务已停止")
         return
 
-    # ==================== 生产模式 ====================
+    # ==================== 生产模式（PyQt6） ====================
 
     # 1. 启动 Waitress 服务器（后台线程）
     server_thread = threading.Thread(target=_serve_with_restart, args=(app,), daemon=True)
@@ -953,19 +1112,17 @@ def main():
     else:
         logger.warning("服务启动超时")
 
-    # 3. 启动系统托盘（后台线程）
-    icon_img = _create_icon_image()
-    tray_thread = threading.Thread(target=_start_tray, args=(icon_img,), daemon=True)
-    tray_thread.start()
+    # 3. 创建 QApplication（必须在主线程）
+    from PyQt6.QtWidgets import QApplication
+    qt_app = QApplication(sys.argv)
 
-    # 4. 启动 GUI 主面板（主线程，阻塞）
+    # 4. 启动 GUI 主面板（含系统托盘）
     _main_window = MainPanel()
     try:
         _main_window.run()
     except (KeyboardInterrupt, SystemExit):
         pass
 
-    # mainloop 结束后清理
     _cleanup_and_exit()
 
 
@@ -973,7 +1130,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as _exc:
-        # console=False 时 macOS/Linux 上无终端输出，崩溃日志写到文件以便诊断
         import traceback
         _log_path = os.path.join(os.path.expanduser("~"), ".ssh_key_manager_crash.log")
         try:
