@@ -653,27 +653,7 @@ class MainPanel:
 
         # ---- 检查更新 ----
         update_row = QHBoxLayout()
-        update_row.setSpacing(8)
-
-        from PyQt6.QtWidgets import QComboBox
-        self.cmb_branch = QComboBox()
-        self.cmb_branch.addItems(["qt-gui", "main"])
-        self.cmb_branch.setCurrentText("qt-gui")
-        self.cmb_branch.setStyleSheet("""
-            QComboBox {
-                background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
-                border-radius: 8px; padding: 6px 10px; font-size: 10px;
-            }
-            QComboBox:hover { border-color: #6366f1; }
-            QComboBox::drop-down { border: none; padding-right: 4px; }
-            QComboBox QAbstractItemView {
-                background: #1e293b; color: #cbd5e1;
-                border: 1px solid #334155; border-radius: 6px;
-                selection-background-color: #334155;
-            }
-        """)
-        update_row.addWidget(self.cmb_branch)
-
+        update_row.setSpacing(10)
         btn_check_update = QPushButton("🔍  检查更新")
         btn_check_update.setObjectName("btnGhost")
         btn_check_update.setStyleSheet("""
@@ -887,30 +867,24 @@ class MainPanel:
             QMessageBox.critical(self.win, "清理失败", str(e))
 
     def _check_update(self):
-        """检查 GitHub 最新版本（缓存 5 分钟，后台线程不卡 UI）"""
-        branch = self.cmb_branch.currentText()
+        """检查 GitHub 最新 Release（后台线程不卡 UI）"""
         now = time.time()
-        cache_key = f"{branch}_{self._current_version}"
-        # 防止重复请求
+        # 防重复 + 5 分钟缓存
         if getattr(self, '_update_checking', False):
             return
-        # 5 分钟内已有结果，直接复用缓存
-        if hasattr(self, '_update_cache_key') and self._update_cache_key == cache_key:
-            if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
-                self._apply_update_result(self._update_cache_result)
-                return
+        if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
+            self._apply_update_result(self._update_cache_result)
+            return
         self._update_checking = True
-        self._update_cache_key = cache_key
-        self.lbl_update_status.setText(f"检查 {branch} 分支…")
+        self.lbl_update_status.setText("检查中…")
         self.lbl_update_status.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
-        threading.Thread(target=lambda: self._do_check_update(branch), daemon=True).start()
+        threading.Thread(target=self._do_check_update, daemon=True).start()
 
-    def _do_check_update(self, branch: str):
-        """后台线程：请求 GitHub API 按分支过滤最新 Release"""
-        import requests, json
+    def _do_check_update(self):
+        """后台线程：请求 /releases/latest，结果回主线程"""
+        import requests
 
-        API_RELEASES = "https://api.github.com/repos/tangjin2580/sshkeys/releases?per_page=30"
-        RELEASES_URL = "https://github.com/tangjin2580/sshkeys/releases"
+        GITHUB_API = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
 
         def _parse_version(v: str) -> tuple:
             v = v.lstrip("v").strip()
@@ -920,45 +894,25 @@ class MainPanel:
                 return (0,)
 
         try:
-            logger.info(f"[更新检查] 查询 {branch} 分支 Release…")
-            resp = requests.get(API_RELEASES, headers={
+            resp = requests.get(GITHUB_API, headers={
                 "User-Agent": "SSH-Key-Manager",
                 "Accept": "application/vnd.github+json",
             }, timeout=(3, 10))
             resp.raise_for_status()
-            releases = resp.json()
-            logger.info(f"[更新检查] 共获取 {len(releases)} 个 Release")
+            data = resp.json()
 
-            # 按 target_commitish 过滤该分支的 Release
-            branch_releases = [r for r in releases if r.get("target_commitish") == branch]
-            logger.info(f"[更新检查] 匹配 {branch} 分支: {len(branch_releases)} 个")
-            if not branch_releases:
-                logger.warning(f"[更新检查] {branch} 无匹配 Release，回退 latest")
-                latest_api = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
-                resp2 = requests.get(latest_api, headers={
-                    "User-Agent": "SSH-Key-Manager",
-                    "Accept": "application/vnd.github+json",
-                }, timeout=(3, 10))
-                resp2.raise_for_status()
-                latest_release = resp2.json()
-                branch_releases = [latest_release]
-
-            # 取版本号最大的
-            latest = max(branch_releases, key=lambda r: _parse_version(r.get("tag_name", "")))
-            latest_tag = latest.get("tag_name", "")
+            latest_tag = data.get("tag_name", "")
             latest_ver = _parse_version(latest_tag)
             current_ver = _parse_version(self._current_version)
-            html_url = latest.get("html_url", RELEASES_URL)
-            logger.info(f"[更新检查] 本地={self._current_version}({current_ver})  {branch}最新={latest_tag}({latest_ver})  target={latest.get('target_commitish','?')}")
+            html_url = data.get("html_url", "")
+            logger.info(f"[更新检查] 本地={self._current_version} 最新={latest_tag}")
 
             if latest_ver > current_ver:
-                result = ("new", f"🆕 {branch} 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
-                logger.info(f"[更新检查] 发现新版本: {latest_tag}")
+                result = ("new", f"🆕 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
             elif latest_ver == current_ver:
-                result = ("current", f"✅ {branch} 已是最新 {latest_tag}", "#64748b", None)
+                result = ("current", f"✅ 已是最新版本 {latest_tag}", "#64748b", None)
             else:
-                logger.info(f"[更新检查] 本地版本比 {branch} Release 还新")
-                result = ("newer", f"📌 本地 {self._current_version}（{branch} Release 最新 {latest_tag}）", "#f59e0b", None)
+                result = ("newer", f"📌 本地 {self._current_version}（最新 {latest_tag}）", "#f59e0b", None)
         except Exception as e:
             logger.warning(f"[更新检查] 失败: {e}")
             result = ("error", f"❌ 检查失败: {e}", "#f87171", None)
@@ -989,38 +943,11 @@ class MainPanel:
             self._refresh_processes()
 
     def _refresh_processes(self):
-        """异步刷新进程列表（后台线程，不卡 UI）"""
-        if getattr(self, '_proc_loading', False):
-            return  # 已有刷新在进行中
-        self._proc_loading = True
-        self.proc_listbox.clear()
-        self.proc_listbox.addItem("加载中…")
-        self.lbl_proc_status.setText("正在获取进程列表…")
-        threading.Thread(target=self._do_refresh_processes, daemon=True).start()
-
-    def _do_refresh_processes(self):
-        """后台线程：获取进程列表"""
-        err_msg = ""
-        proc_pids = None
-        try:
-            proc_pids = self._list_python_processes()
-            logger.info(f"[进程刷新] 找到 {len(proc_pids) if proc_pids else 0} 个进程")
-        except Exception as e:
-            err_msg = str(e)
-            logger.warning(f"[进程刷新] 失败: {e}")
-        self._QTimer.singleShot(0, lambda: self._apply_process_result(proc_pids, err_msg))
-
-    def _apply_process_result(self, proc_pids, err_msg=""):
-        """主线程：将进程列表应用到 UI"""
-        self._proc_loading = False
+        """同步刷新进程列表（ps aux 足够快，无需异步）"""
         self.proc_listbox.clear()
         self._proc_pids = []
-        if proc_pids is None:
-            self.proc_listbox.addItem(f"刷新失败: {err_msg}")
-            self.lbl_proc_status.setText(f"错误: {err_msg}")
-            return
         try:
-            self._proc_pids = proc_pids
+            self._proc_pids = self._list_python_processes()
             if not self._proc_pids:
                 self.proc_listbox.addItem("未找到 Python 进程")
                 self.lbl_proc_status.setText("未找到 Python 进程")
