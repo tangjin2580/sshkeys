@@ -232,6 +232,7 @@ release/ssh-key-manager-macos-${VER}.dmg"
         with:
           tag_name: v${{ steps.bump.outputs.new }}
           name: v${{ steps.bump.outputs.new }}
+          target_commitish: ${{ github.ref_name }}
           body: ${{ steps.prepare.outputs.body }}
           files: ${{ steps.prepare.outputs.files }}
           draft: false

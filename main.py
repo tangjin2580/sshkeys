@@ -635,7 +635,27 @@ class MainPanel:
 
         # ---- 检查更新 ----
         update_row = QHBoxLayout()
-        update_row.setSpacing(10)
+        update_row.setSpacing(8)
+
+        from PyQt6.QtWidgets import QComboBox
+        self.cmb_branch = QComboBox()
+        self.cmb_branch.addItems(["qt-gui", "main"])
+        self.cmb_branch.setCurrentText("qt-gui")
+        self.cmb_branch.setStyleSheet("""
+            QComboBox {
+                background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+                border-radius: 8px; padding: 6px 10px; font-size: 10px;
+            }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; padding-right: 4px; }
+            QComboBox QAbstractItemView {
+                background: #1e293b; color: #cbd5e1;
+                border: 1px solid #334155; border-radius: 6px;
+                selection-background-color: #334155;
+            }
+        """)
+        update_row.addWidget(self.cmb_branch)
+
         btn_check_update = QPushButton("🔍  检查更新")
         btn_check_update.setObjectName("btnGhost")
         btn_check_update.setStyleSheet("""
@@ -850,21 +870,25 @@ class MainPanel:
 
     def _check_update(self):
         """检查 GitHub 最新版本（缓存 5 分钟，后台线程不卡 UI）"""
+        branch = self.cmb_branch.currentText()
         now = time.time()
-        # 5 分钟内已有结果，直接复用缓存
-        if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
-            self._apply_update_result(self._update_cache_result)
-            return
-        self.lbl_update_status.setText("检查中…")
+        # 分支变更或 5 分钟缓存过期则重新请求
+        cache_key = f"{branch}_{self._current_version}"
+        if hasattr(self, '_update_cache_key') and self._update_cache_key == cache_key:
+            if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
+                self._apply_update_result(self._update_cache_result)
+                return
+        self._update_cache_key = cache_key
+        self.lbl_update_status.setText(f"检查 {branch} 分支…")
         self.lbl_update_status.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
-        threading.Thread(target=self._do_check_update, daemon=True).start()
+        threading.Thread(target=lambda: self._do_check_update(branch), daemon=True).start()
 
-    def _do_check_update(self):
-        """后台线程：用 requests 请求 GitHub API，结果回主线程更新 UI"""
+    def _do_check_update(self, branch: str):
+        """后台线程：请求 GitHub API 按分支过滤最新 Release"""
         import requests, json
 
-        GITHUB_API = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
-        RELEASES_URL = "https://github.com/tangjin2580/sshkeys/releases/latest"
+        API_RELEASES = "https://api.github.com/repos/tangjin2580/sshkeys/releases?per_page=30"
+        RELEASES_URL = "https://github.com/tangjin2580/sshkeys/releases"
 
         def _parse_version(v: str) -> tuple:
             v = v.lstrip("v").strip()
@@ -874,24 +898,39 @@ class MainPanel:
                 return (0,)
 
         try:
-            resp = requests.get(GITHUB_API, headers={
+            resp = requests.get(API_RELEASES, headers={
                 "User-Agent": "SSH-Key-Manager",
                 "Accept": "application/vnd.github+json",
             }, timeout=(3, 10))
             resp.raise_for_status()
-            data = resp.json()
+            releases = resp.json()
 
-            latest_tag = data.get("tag_name", "")
+            # 按 target_commitish 过滤该分支的 Release
+            branch_releases = [r for r in releases if r.get("target_commitish") == branch]
+            if not branch_releases:
+                # 没有找到该分支的 Release，回退到 latest 接口
+                latest_api = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
+                resp2 = requests.get(latest_api, headers={
+                    "User-Agent": "SSH-Key-Manager",
+                    "Accept": "application/vnd.github+json",
+                }, timeout=(3, 10))
+                resp2.raise_for_status()
+                latest_release = resp2.json()
+                branch_releases = [latest_release]
+
+            # 取版本号最大的
+            latest = max(branch_releases, key=lambda r: _parse_version(r.get("tag_name", "")))
+            latest_tag = latest.get("tag_name", "")
             latest_ver = _parse_version(latest_tag)
             current_ver = _parse_version(self._current_version)
-            html_url = data.get("html_url", RELEASES_URL)
+            html_url = latest.get("html_url", RELEASES_URL)
 
             if latest_ver > current_ver:
-                result = ("new", f"🆕 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
+                result = ("new", f"🆕 {branch} 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
             elif latest_ver == current_ver:
-                result = ("current", f"✅ 已是最新版本 {latest_tag}", "#64748b", None)
+                result = ("current", f"✅ {branch} 已是最新 {latest_tag}", "#64748b", None)
             else:
-                result = ("newer", f"当前 {self._current_version}（比最新 {latest_tag} 还新）", "#64748b", None)
+                result = ("newer", f"当前 {self._current_version}（比 {branch} 最新 {latest_tag} 还新）", "#64748b", None)
         except Exception as e:
             result = ("error", f"❌ 检查失败: {e}", "#f87171", None)
 
