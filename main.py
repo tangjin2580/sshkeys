@@ -484,7 +484,23 @@ class MainPanel:
         self._QTimer.singleShot(3000, self._check_update)
 
     def _make_qicon(self):
-        """从 PIL Image 生成 QIcon"""
+        """生成 QIcon：优先从 .ico/.icns 直接加载，失败则 PIL 生成"""
+        # 1. 尝试从文件直接加载（Windows .ico / macOS .icns）
+        try:
+            from PyQt6.QtGui import QIcon as _QIcon
+            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+                base = Path(sys._MEIPASS)
+            else:
+                base = ROOT_DIR
+            for ext in ("ico", "icns", "png"):
+                path = base / "asset" / f"icon.{ext}"
+                if path.exists():
+                    icon = _QIcon(str(path))
+                    if not icon.isNull():
+                        return icon
+        except Exception:
+            pass
+        # 2. 回退：PIL 生成
         try:
             from PIL.ImageQt import ImageQt
             img = _create_icon_image()
@@ -959,10 +975,37 @@ class MainPanel:
             self._refresh_processes()
 
     def _refresh_processes(self):
+        """异步刷新进程列表（后台线程，不卡 UI）"""
+        if getattr(self, '_proc_loading', False):
+            return  # 已有刷新在进行中
+        self._proc_loading = True
+        self.proc_listbox.clear()
+        self.proc_listbox.addItem("加载中…")
+        self.lbl_proc_status.setText("正在获取进程列表…")
+        threading.Thread(target=self._do_refresh_processes, daemon=True).start()
+
+    def _do_refresh_processes(self):
+        """后台线程：获取进程列表"""
+        try:
+            proc_pids = self._list_python_processes()
+        except Exception as e:
+            proc_pids = None
+            err_msg = str(e)
+        self._QTimer.singleShot(0, lambda: self._apply_process_result(
+            proc_pids if proc_pids is not None else None,
+            err_msg if proc_pids is None else ""))
+
+    def _apply_process_result(self, proc_pids, err_msg=""):
+        """主线程：将进程列表应用到 UI"""
+        self._proc_loading = False
         self.proc_listbox.clear()
         self._proc_pids = []
+        if proc_pids is None:
+            self.proc_listbox.addItem(f"刷新失败: {err_msg}")
+            self.lbl_proc_status.setText(f"错误: {err_msg}")
+            return
         try:
-            self._proc_pids = self._list_python_processes()
+            self._proc_pids = proc_pids
             if not self._proc_pids:
                 self.proc_listbox.addItem("未找到 Python 进程")
                 self.lbl_proc_status.setText("未找到 Python 进程")
