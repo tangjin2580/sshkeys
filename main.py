@@ -888,12 +888,16 @@ class MainPanel:
         """检查 GitHub 最新版本（缓存 5 分钟，后台线程不卡 UI）"""
         branch = self.cmb_branch.currentText()
         now = time.time()
-        # 分支变更或 5 分钟缓存过期则重新请求
         cache_key = f"{branch}_{self._current_version}"
+        # 防止重复请求
+        if getattr(self, '_update_checking', False):
+            return
+        # 5 分钟内已有结果，直接复用缓存
         if hasattr(self, '_update_cache_key') and self._update_cache_key == cache_key:
             if hasattr(self, '_update_cache_time') and (now - self._update_cache_time) < 300:
                 self._apply_update_result(self._update_cache_result)
                 return
+        self._update_checking = True
         self._update_cache_key = cache_key
         self.lbl_update_status.setText(f"检查 {branch} 分支…")
         self.lbl_update_status.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
@@ -914,17 +918,20 @@ class MainPanel:
                 return (0,)
 
         try:
+            logger.info(f"[更新检查] 查询 {branch} 分支 Release…")
             resp = requests.get(API_RELEASES, headers={
                 "User-Agent": "SSH-Key-Manager",
                 "Accept": "application/vnd.github+json",
             }, timeout=(3, 10))
             resp.raise_for_status()
             releases = resp.json()
+            logger.info(f"[更新检查] 共获取 {len(releases)} 个 Release")
 
             # 按 target_commitish 过滤该分支的 Release
             branch_releases = [r for r in releases if r.get("target_commitish") == branch]
+            logger.info(f"[更新检查] 匹配 {branch} 分支: {len(branch_releases)} 个")
             if not branch_releases:
-                # 没有找到该分支的 Release，回退到 latest 接口
+                logger.warning(f"[更新检查] {branch} 无匹配 Release，回退 latest")
                 latest_api = "https://api.github.com/repos/tangjin2580/sshkeys/releases/latest"
                 resp2 = requests.get(latest_api, headers={
                     "User-Agent": "SSH-Key-Manager",
@@ -940,14 +947,18 @@ class MainPanel:
             latest_ver = _parse_version(latest_tag)
             current_ver = _parse_version(self._current_version)
             html_url = latest.get("html_url", RELEASES_URL)
+            logger.info(f"[更新检查] 本地={self._current_version}({current_ver})  {branch}最新={latest_tag}({latest_ver})  target={latest.get('target_commitish','?')}")
 
             if latest_ver > current_ver:
                 result = ("new", f"🆕 {branch} 有新版本 {latest_tag} → 点击下载", "#10b981", html_url)
+                logger.info(f"[更新检查] 发现新版本: {latest_tag}")
             elif latest_ver == current_ver:
                 result = ("current", f"✅ {branch} 已是最新 {latest_tag}", "#64748b", None)
             else:
-                result = ("newer", f"当前 {self._current_version}（比 {branch} 最新 {latest_tag} 还新）", "#64748b", None)
+                logger.info(f"[更新检查] 本地版本比 {branch} Release 还新")
+                result = ("newer", f"📌 本地 {self._current_version}（{branch} Release 最新 {latest_tag}）", "#f59e0b", None)
         except Exception as e:
+            logger.warning(f"[更新检查] 失败: {e}")
             result = ("error", f"❌ 检查失败: {e}", "#f87171", None)
 
         self._update_cache_time = time.time()
@@ -956,6 +967,7 @@ class MainPanel:
 
     def _apply_update_result(self, result):
         """主线程：将检查结果应用到 UI"""
+        self._update_checking = False
         _, msg, color, url = result
         self.lbl_update_status.setStyleSheet(
             f"color: {color}; font-size: 10px; border: none;" +
