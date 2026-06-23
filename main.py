@@ -483,6 +483,12 @@ class MainPanel:
         # 启动后延迟检查更新
         self._QTimer.singleShot(3000, self._check_update)
 
+        # 更新检查结果轮询（后台线程 → 主线程）
+        self._update_pending_result = None
+        self._update_poll_timer = QTimer()
+        self._update_poll_timer.timeout.connect(self._poll_update_result)
+        self._update_poll_timer.start(500)
+
     def _make_qicon(self):
         """生成 QIcon：优先从 .ico/.icns 直接加载，失败则 PIL 生成"""
         # 1. 尝试从文件直接加载（Windows .ico / macOS .icns）
@@ -919,11 +925,19 @@ class MainPanel:
 
         self._update_cache_time = time.time()
         self._update_cache_result = result
-        self._QTimer.singleShot(0, lambda: self._apply_update_result(result))
+        # 通过线程安全标志传递结果给主线程轮询
+        self._update_pending_result = result
+
+    def _poll_update_result(self):
+        """主线程轮询：检查后台线程是否有更新结果待处理"""
+        pending = self._update_pending_result
+        if pending is not None:
+            self._apply_update_result(pending)
 
     def _apply_update_result(self, result):
         """主线程：将检查结果应用到 UI"""
         self._update_checking = False
+        self._update_pending_result = None
         _, msg, color, url = result
         self.lbl_update_status.setStyleSheet(
             f"color: {color}; font-size: 10px; border: none;" +
