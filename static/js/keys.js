@@ -172,6 +172,13 @@ async function uploadKey(target) {
         body.port = parseInt(document.getElementById("serverPort").value) || 22;
         body.username = document.getElementById("serverUser").value.trim();
         body.password = document.getElementById("serverPassword").value.trim();
+        // 可选：写入 SSH config
+        const hostAlias = document.getElementById("serverHostAlias")?.value.trim() || "";
+        const writeConfig = document.getElementById("serverWriteConfig")?.checked || false;
+        if (hostAlias) {
+            body.host_alias = hostAlias;
+        }
+        body.write_config = writeConfig;
     } else if (target === "github") {
         body.token = document.getElementById("githubToken").value.trim();
         body.title = document.getElementById("githubTitle").value.trim() || "SSH Key Manager";
@@ -188,8 +195,15 @@ async function uploadKey(target) {
             body: JSON.stringify(body),
         });
         const data = await res.json();
-        showToast(data.message, data.success ? "success" : "error");
-        log(data.message, data.success ? "success" : "error");
+        let msg = data.message || "";
+        if (data.config_written) {
+            msg += ` | SSH config 已写入: Host ${data.config_host}`;
+        }
+        if (data.config_error) {
+            msg += ` | Config 写入失败: ${data.config_error}`;
+        }
+        showToast(msg, data.success ? "success" : "error");
+        log(msg, data.success ? "success" : "error");
     } catch (err) {
         showToast("上传请求失败", "error");
     }
@@ -272,11 +286,18 @@ async function loadExistingConfig() {
         if (keys.length > 0) {
             html += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">🔑 密钥文件</div>';
             keys.forEach(k => {
+                const mtime = k.mtime || "-";
+                const ctime = k.ctime || "-";
                 html += `
                 <div class="key-item">
                     <div class="key-item-left">
-                        <span class="key-item-name" title="${esc(k.name)}">${esc(k.name)}</span>
-                        <span class="key-item-badge">${esc(k.type.toUpperCase())}</span>
+                        <div class="key-item-row">
+                            <span class="key-item-name" title="${esc(k.name)}">${esc(k.name)}</span>
+                            <span class="key-item-badge">${esc(k.type.toUpperCase())}</span>
+                        </div>
+                        <div class="key-item-meta">
+                            <span class="key-item-time" title="创建时间: ${esc(ctime)}">📅 修改: ${esc(mtime)}</span>
+                        </div>
                     </div>
                     <div class="key-item-actions">
                         <button class="btn btn-sm btn-outline" onclick="copyKeyFile('${esc(k.name)}', '${esc(k.type)}')">📋</button>

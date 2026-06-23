@@ -9,6 +9,7 @@ import os
 import re
 import logging
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,12 +84,16 @@ def list_existing_keys() -> list[dict]:
             display_name = str(rel_path).replace("\\", "/")
         except ValueError:
             display_name = entry.name
+        # 获取文件时间戳
+        stat = entry.stat()
         return {
             "name": display_name,
             "path": str(entry),
             "has_pub": pub_path.exists(),
-            "size": entry.stat().st_size,
+            "size": stat.st_size,
             "type": key_type,
+            "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            "ctime": datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
         }
 
     keys = []

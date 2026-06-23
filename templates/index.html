@@ -322,7 +322,22 @@
                                         <input type="password" id="serverPassword" class="form-input" placeholder="留空使用默认密钥">
                                     </div>
                                 </div>
-                                <button class="btn btn-success btn-block" onclick="uploadKey('server')">🖥️ 仅上传公钥</button>
+                                <div class="form-group">
+                                    <label for="serverHostAlias">Host 别名（用于 SSH config）</label>
+                                    <input type="text" id="serverHostAlias" class="form-input" placeholder="myserver（可选，填写后自动写入 ~/.ssh/config）">
+                                </div>
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="serverWriteConfig" checked>
+                                        <span>上传成功后自动写入 SSH Config 并加入连接管理</span>
+                                    </label>
+                                </div>
+                                <button class="btn btn-success btn-block" onclick="uploadKey('server')">
+                                    🖥️ 上传公钥并配置免密登录
+                                </button>
+                                <small style="display:block;margin-top:8px;color:var(--text-muted);text-align:center;">
+                                    之后 <code>ssh 别名</code> 或 <code>ssh IP</code> 均可免密
+                                </small>
                             </div>
 
                             <!-- GitHub 面板 -->

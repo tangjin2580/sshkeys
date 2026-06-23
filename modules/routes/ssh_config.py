@@ -63,14 +63,51 @@ def save_and_setup():
         "user": "root",                 // SSH 用户名
         "port": 22,                     // SSH 端口
         "upload": true,                 // 是否同时上传公钥到服务器
-        "upload_password": "xxx"        // 上传所需的密码（可选）
+        "upload_password": "xxx",       // 上传所需的密码（可选）
+        "key_name": "id_ed25519"        // 使用已有密钥文件名（可选，不填则用当前生成的）
     }
     """
     # _current_keys via _common
     data = request.get_json() or {}
 
-    if not _common._current_keys.get("private_key"):
-        return jsonify({"success": False, "error": "请先生成密钥"}), 400
+    key_name = data.get("key_name", "").strip()
+
+    # 支持两种方式获取密钥：1) 指定已有密钥文件 2) 当前会话生成的密钥
+    if key_name:
+        # 从已有密钥文件读取
+        from modules.ssh_config import get_ssh_dir, list_existing_keys
+        ssh_dir = get_ssh_dir()
+        priv_path = ssh_dir / key_name
+        pub_path = ssh_dir / f"{key_name}.pub"
+        if not priv_path.exists():
+            return jsonify({"success": False, "error": f"密钥文件不存在: {key_name}"}), 404
+        if not pub_path.exists():
+            return jsonify({"success": False, "error": f"公钥文件不存在: {key_name}.pub"}), 404
+        try:
+            with open(priv_path, "r", encoding="utf-8") as f:
+                priv_key = f.read().strip()
+            with open(pub_path, "r", encoding="utf-8") as f:
+                pub_key = f.read().strip()
+            # 从文件名推断密钥类型
+            if "rsa" in key_name.lower():
+                key_type = "rsa"
+            elif "ecdsa" in key_name.lower():
+                key_type = "ecdsa"
+            else:
+                key_type = "ed25519"
+            # 临时存到会话中供上传使用
+            _common._current_keys = {
+                "private_key": priv_key,
+                "public_key": pub_key,
+                "key_type": key_type,
+                "key_size": 256,
+                "comment": "user@host",
+            }
+        except Exception as e:
+            logger.exception(f"读取密钥文件失败: {key_name}")
+            return jsonify({"success": False, "error": f"读取密钥文件失败: {str(e)}"}), 500
+    elif not _common._current_keys.get("private_key"):
+        return jsonify({"success": False, "error": "请先生成密钥或指定已有密钥"}), 400
 
     host_alias = data.get("host_alias", "").strip()
     hostname = data.get("hostname", "").strip()
@@ -85,15 +122,20 @@ def save_and_setup():
     results = {"saved": None, "config": None, "upload": None}
 
     try:
-        # 1. 保存私钥到 ~/.ssh
-        _sse_broadcast("progress", {"message": "正在保存密钥到 ~/.ssh ...", "time": datetime.now().strftime("%H:%M:%S")})
-        saved = save_key_to_ssh_dir(
-            private_key_str=_common._current_keys["private_key"],
-            public_key_str=_common._current_keys["public_key"],
-            key_type=_common._current_keys.get("key_type", "ed25519"),
-        )
+        # 1. 保存私钥到 ~/.ssh（仅当新生成的密钥时才保存，已有密钥跳过）
+        if key_name:
+            # 使用已有密钥，跳过保存步骤，直接使用已有文件名
+            saved = {"filename": key_name, "path": str(priv_path)}
+            _sse_broadcast("progress", {"message": f"✓ 使用已有密钥: {key_name}", "time": datetime.now().strftime("%H:%M:%S")})
+        else:
+            _sse_broadcast("progress", {"message": "正在保存密钥到 ~/.ssh ...", "time": datetime.now().strftime("%H:%M:%S")})
+            saved = save_key_to_ssh_dir(
+                private_key_str=_common._current_keys["private_key"],
+                public_key_str=_common._current_keys["public_key"],
+                key_type=_common._current_keys.get("key_type", "ed25519"),
+            )
+            _sse_broadcast("progress", {"message": f"✓ 密钥已保存: {saved['filename']}", "time": datetime.now().strftime("%H:%M:%S")})
         results["saved"] = saved
-        _sse_broadcast("progress", {"message": f"✓ 密钥已保存: {saved['filename']}", "time": datetime.now().strftime("%H:%M:%S")})
 
         # 2. 写入 SSH config
         _sse_broadcast("progress", {"message": f"正在写入 SSH config (Host {host_alias}) ...", "time": datetime.now().strftime("%H:%M:%S")})

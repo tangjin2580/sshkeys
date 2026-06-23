@@ -8,7 +8,8 @@ import modules.common as _common
 from modules.common import _sse_broadcast, _create_progress_callback
 from modules.key_generator import SSHKeyGenerator, KEY_TYPES, compute_fingerprint
 from modules.key_uploader import KeyUploader
-from modules.ssh_config import get_ssh_dir
+from modules.ssh_config import get_ssh_dir, add_or_update_host
+from modules.connections_store import add_connection
 
 logger = logging.getLogger(__name__)
 keys_bp = Blueprint("keys", __name__)
@@ -128,7 +129,9 @@ def upload_key():
         "port": 22,               // server 模式可选
         "key_name": "...",        // 指定使用已有密钥文件名（可选）
         "public_key": "...",      // 或直接提供公钥内容（可选）
-        "gitlab_url": "..."       // GitLab 自托管实例 (可选)
+        "gitlab_url": "...",      // GitLab 自托管实例 (可选)
+        "host_alias": "...",      // server 模式：写入 SSH config 的 Host 别名（可选）
+        "write_config": true      // server 模式：是否同时写入 SSH config（可选）
     }
     """
     # _current_keys via _common
@@ -204,6 +207,44 @@ def upload_key():
                 port=data.get("port", 22),
                 progress_callback=progress_cb,
             )
+
+            # 可选：写入 SSH config
+            host_alias = data.get("host_alias", "").strip()
+            write_config = data.get("write_config", False)
+            if write_config and host_alias and result.get("success"):
+                try:
+                    # 确定 IdentityFile 路径
+                    if key_name:
+                        identity_file = f"~/.ssh/{key_name}"
+                    elif _common._current_keys.get("private_key"):
+                        # 当前会话生成的密钥，使用默认命名
+                        kt = _common._current_keys.get("key_type", "ed25519")
+                        identity_file = f"~/.ssh/id_{kt}"
+                    else:
+                        identity_file = f"~/.ssh/id_ed25519"
+
+                    add_or_update_host(
+                        host_alias=host_alias,
+                        hostname=host,
+                        user=username,
+                        identity_file=identity_file,
+                        port=data.get("port", 22),
+                    )
+                    result["config_written"] = True
+                    result["config_host"] = host_alias
+                    _sse_broadcast("progress", {"message": f"✓ SSH config 已写入: Host {host_alias}", "time": datetime.now().strftime("%H:%M:%S")})
+
+                    # 同步保存到连接管理
+                    add_connection(
+                        alias=host_alias,
+                        hostname=host,
+                        user=username,
+                        identity_file=identity_file,
+                        port=data.get("port", 22),
+                    )
+                except Exception as e:
+                    logger.exception("写入 SSH config 失败")
+                    result["config_error"] = str(e)
 
         else:
             return jsonify({"success": False, "error": f"不支持的上传目标: {target}"}), 400
