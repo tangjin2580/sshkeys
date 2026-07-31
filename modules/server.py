@@ -149,6 +149,52 @@ def sse_status():
         "queue_count": get_sse_queue_count(),
     })
 
+# ==================== 系统信息 / 启动检查 ====================
+
+def _load_version():
+    """读取 VERSION 文件（若存在），否则返回 dev。"""
+    try:
+        p = BASE_DIR / "VERSION"
+        if p.exists():
+            return p.read_text(encoding="utf-8").strip() or "dev"
+    except Exception:
+        pass
+    return "dev"
+
+app.config["APP_VERSION"] = _load_version()
+
+
+@app.route("/api/system/info")
+def system_info():
+    """返回运行状态与启动检查结果，供前端『启动检查区』展示。"""
+    # 统计各蓝图已注册路由数（健康检查）
+    counts = {}
+    for rule in app.url_map.iter_rules():
+        bp = rule.endpoint.split(".")[0] if "." in rule.endpoint else "(core)"
+        counts[bp] = counts.get(bp, 0) + 1
+
+    required = {
+        "webssh": "WebSSH 终端",
+        "keys": "密钥管理",
+        "connections": "我的连接",
+        "filesync": "文件同步",
+    }
+    route_counts = {name: counts.get(key, 0) for key, name in required.items()}
+    health_ok = all(v > 0 for v in route_counts.values())
+
+    return jsonify({
+        "success": True,
+        "version": app.config.get("APP_VERSION", "dev"),
+        "host": app.config.get("BIND_HOST", "127.0.0.1"),
+        "port": app.config.get("BIND_PORT", 5050),
+        "preferred_port": app.config.get("PREFERRED_PORT"),
+        "port_avoided": app.config.get("PORT_AVOIDED", False),
+        "startup_checks": app.config.get("STARTUP_CHECKS", []),
+        "route_counts": route_counts,
+        "health_ok": health_ok,
+    })
+
+
 # ==================== 启动 ====================
 
 def create_app():
@@ -161,10 +207,12 @@ def create_app():
     from modules.routes.ssh_config import ssh_config_bp
     from modules.routes.connections import connections_bp
     from modules.routes.platform import platform_bp
+    from modules.routes.filesync import filesync_bp
 
     app.register_blueprint(keys_bp)
     app.register_blueprint(ssh_config_bp)
     app.register_blueprint(connections_bp)
     app.register_blueprint(platform_bp)
+    app.register_blueprint(filesync_bp)
 
     return app

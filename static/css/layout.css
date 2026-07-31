@@ -615,7 +615,33 @@ html.dark .sidebar ul li:not(.active):hover a .text {
     to   { opacity: 0; transform: translateX(-30px); visibility: hidden; }
 }
 
-.footer { text-align: center; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.75rem; font-weight: 300; }
+.footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 2rem 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 300;
+}
+.footer-brand { white-space: nowrap; }
+.footer-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-variant-numeric: tabular-nums;
+}
+.footer-status.status-ready { color: var(--primary); border-color: rgba(100, 161, 157, 0.35); }
+[data-theme="light"] .footer-status {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+}
 
 /* ============================================================
    响应式

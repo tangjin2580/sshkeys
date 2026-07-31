@@ -8,6 +8,7 @@
     <!-- Fonts: 全部本地化 -->
     <link rel="stylesheet" href="/static/fonts/google-fonts.css">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/filesync.css">
     <!-- xterm.js (WebSSH 终端）— CSS 在页面底部统一引入 -->
     <script>
     (function () {
@@ -133,6 +134,14 @@
                         </a>
                     </li>
 
+                    <!-- 文件同步 -->
+                    <li style="--bg: #4db6ac;" data-panel="panel-filesync">
+                        <a href="#">
+                            <div class="icon"><img src="/static/ionicons/svg/link-outline.svg" alt="icon" class="sidebar-icon" /></div>
+                            <div class="text">文件同步</div>
+                        </a>
+                    </li>
+
                     <!-- 操作日志 -->
                     <li style="--bg: #795548;" data-panel="panel-log">
                         <a href="javascript:void(0)" onclick="switchPanel('panel-log')">
@@ -185,6 +194,10 @@
                             <button class="nav-action-btn" onclick="toggleLocalTerminalDropdownFromNav()">🚀 启动终端</button>
                         </div>
                         <div class="local-terminal-dropdown-nav" id="localTerminalDropdownNav" style="display:none;"></div>
+                    </div>
+                    <div class="nav-context" data-for-panel="panel-filesync">
+                        <button class="nav-action-btn" onclick="fsTestConn()">🔍 测试连接</button>
+                        <button class="nav-action-btn" onclick="fsStartSync()">🚀 开始同步</button>
                     </div>
                 </div>
             </div>
@@ -640,11 +653,108 @@
                 </section>
             </div>
 
+            <!-- ===== Panel 9: 文件同步 ===== -->
+            <div class="content-panel" id="panel-filesync">
+                <div class="main-grid">
+                    <!-- 左栏：连接配置 + 待同步列表 -->
+                    <div class="col-left">
+                        <!-- 目标服务器 -->
+                        <section class="card">
+                            <h2 class="section-title">🔌 目标服务器</h2>
+                            <div class="form-group">
+                                <label for="fsConnSelect">选择已保存连接</label>
+                                <select id="fsConnSelect" class="form-select" onchange="fsOnConnChange(this)">
+                                    <option value="">— 手动输入 —</option>
+                                </select>
+                                <small>从「我的连接」中快速带入地址与账号</small>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="fsHost">主机地址</label>
+                                    <input type="text" id="fsHost" class="form-input" value="172.1.1.19" placeholder="192.168.1.100">
+                                </div>
+                                <div class="form-group" style="width:80px;">
+                                    <label for="fsPort">端口</label>
+                                    <input type="number" id="fsPort" class="form-input" value="22">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="fsUser">用户名</label>
+                                    <input type="text" id="fsUser" class="form-input" value="admin" placeholder="root">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="fsPass">密码</label>
+                                    <input type="password" id="fsPass" class="form-input" value="2324" placeholder="留空使用密钥">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="fsRemote">远程目标目录</label>
+                                <input type="text" id="fsRemote" class="form-input" value="C:/sync" placeholder="C:/sync">
+                                <small>Windows 端同步根目录（路径含空格请加引号）</small>
+                            </div>
+                            <div class="form-group" style="display:none;">
+                                <input type="text" id="fsIdentity" class="form-input">
+                            </div>
+                            <button class="btn btn-outline btn-block" onclick="fsTestConn()">🔍 测试连接</button>
+                        </section>
+
+                        <!-- 待同步 -->
+                        <section class="card">
+                            <div class="section-header">
+                                <h2 class="section-title">📋 待同步</h2>
+                                <span class="text-secondary" id="fsCount">0 项</span>
+                            </div>
+                            <div id="fsList" class="fs-list">
+                                <div class="sidebar-empty">从右侧浏览器选择文件/文件夹添加</div>
+                            </div>
+                            <button class="btn btn-primary btn-block btn-lg" onclick="fsStartSync()" id="fsSyncBtn">🚀 开始同步</button>
+                            <div class="progress" id="fsProgressWrap" style="display:none;">
+                                <div class="progress-bar"><div class="progress-fill" id="fsProgressFill"></div></div>
+                                <div class="progress-text" id="fsProgressText"></div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- 右栏：本地文件浏览器 + 日志 -->
+                    <div class="col-right">
+                        <!-- 文件浏览器 -->
+                        <section class="card">
+                            <div class="webssh-header">
+                                <h2 class="section-title">📁 本地文件浏览器</h2>
+                            </div>
+                            <div class="fs-browser-toolbar">
+                                <button class="btn btn-outline btn-sm" onclick="fsGoUp()">⬆ 上级</button>
+                                <input type="text" id="fsPath" class="form-input fs-path-input" placeholder="输入路径后回车" onkeydown="if(event.key==='Enter')fsBrowse(this.value)">
+                                <button class="btn btn-outline btn-sm" onclick="fsBrowse(document.getElementById('fsPath').value)">前往</button>
+                                <button class="btn btn-outline btn-sm" onclick="fsHome()">🏠 主目录</button>
+                                <button class="btn btn-primary btn-sm" onclick="fsAddSelected()">➕ 添加</button>
+                            </div>
+                            <div class="fs-browser-body" id="fsBrowserBody">
+                                <div class="sidebar-empty">加载中…</div>
+                            </div>
+                        </section>
+
+                        <!-- 日志 -->
+                        <section class="card">
+                            <div class="log-panel-header">
+                                <h2 class="section-title">📜 同步日志</h2>
+                                <button class="btn btn-sm btn-outline" id="fsClearBtn" onclick="fsClearLogs()">清空</button>
+                            </div>
+                            <div class="log-box log-box-full" id="fsLogBox">
+                                <div class="log-entry log-info">等待同步...</div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
     <footer class="footer">
-        <span>SSH Key Manager · Windows / macOS / Linux</span>
+        <span class="footer-brand">SSH Key Manager · Windows / macOS / Linux</span>
+        <span class="footer-status" id="footerStatus">⏳ 启动检查中…</span>
     </footer>
 
     <!-- xterm.js (WebSSH 终端）— 本地文件，无需 CDN -->
@@ -659,5 +769,34 @@
     <script src="/static/js/terminal.js"></script>
     <script src="/static/js/webssh_terminal.js"></script>
     <script src="/static/js/webssh_sftp.js"></script>
+    <script src="/static/js/filesync.js"></script>
+
+    <!-- 启动检查 / 端口状态：拉取 /api/system/info 渲染到页脚 -->
+    <script>
+    (function () {
+        var el = document.getElementById('footerStatus');
+        fetch('/api/system/info')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.success) { return; }
+                var parts = ['🌐 ' + d.host + ':' + d.port];
+                if (d.port_avoided) {
+                    parts.push('⚠️ 首选 ' + d.preferred_port + ' 被占用，已避让');
+                }
+                if (d.health_ok) {
+                    parts.push('✅ 启动检查通过');
+                } else {
+                    parts.push('⚠️ 启动检查异常');
+                }
+                if (el) {
+                    el.textContent = parts.join('  ·  ');
+                    el.classList.add('status-ready');
+                }
+            })
+            .catch(function () {
+                if (el) { el.textContent = '⚠️ 无法获取服务状态'; }
+            });
+    })();
+    </script>
 </body>
 </html>
