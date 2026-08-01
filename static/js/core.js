@@ -412,6 +412,22 @@ function switchPanel(panelId) {
     document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
     const target = document.getElementById(panelId);
     if (target) target.classList.add('active');
+    // 侧边栏高亮联动
+    document.querySelectorAll('.menu-list li[data-panel]').forEach(si => {
+        si.classList.toggle('active', si.dataset.panel === panelId);
+    });
+    // 顶栏上下文操作区联动（data-for-panel 匹配则显示对应按钮）
+    document.querySelectorAll('.nav-context').forEach(ctx => {
+        ctx.classList.toggle('active', ctx.dataset.forPanel === panelId);
+    });
+    // 顶栏导航标签：仅当存在匹配标签时高亮，避免误清空其它标签
+    const hasTab = [...document.querySelectorAll('.nav-tab[data-panel]')]
+        .some(t => t.dataset.panel === panelId);
+    if (hasTab) {
+        document.querySelectorAll('.nav-tab[data-panel]').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.panel === panelId);
+        });
+    }
     // 切换到连接历史面板时自动渲染
     if (panelId === 'panel-webssh-history' && typeof renderWebSSHHistory === 'function') {
         renderWebSSHHistory();

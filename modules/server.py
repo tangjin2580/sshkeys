@@ -161,10 +161,12 @@ def create_app():
     from modules.routes.ssh_config import ssh_config_bp
     from modules.routes.connections import connections_bp
     from modules.routes.platform import platform_bp
+    from modules.routes.filesync import filesync_bp
 
     app.register_blueprint(keys_bp)
     app.register_blueprint(ssh_config_bp)
     app.register_blueprint(connections_bp)
     app.register_blueprint(platform_bp)
+    app.register_blueprint(filesync_bp)
 
     return app
