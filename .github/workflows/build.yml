@@ -141,7 +141,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
