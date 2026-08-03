@@ -13,41 +13,39 @@ permissions:
   contents: write
 
 jobs:
-  # 版本号前置自增：必须在 build 之前完成，否则打包产物内置的 VERSION
-  # 会落后 release tag 一个 patch，导致已是最新版却提示“有新版本”。
-  version-bump:
-    name: Bump Version
+  # 计算本次发布的版本号：仅在本工作流内部本地使用（用于打包产物与 release tag），
+  # 绝不再 commit+push 回工作分支，避免污染 qt-gui/main。
+  # 通过 ls-remote 查重，连续 push 时自动顺延到空闲版本号，避免 tag 冲突。
+  version:
+    name: Compute Version
     runs-on: ubuntu-latest
     outputs:
-      new: ${{ steps.bump.outputs.new }}
+      new: ${{ steps.calc.outputs.new }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read & bump version
-        id: bump
+      - name: Compute next free version
+        id: calc
         shell: bash
         run: |
           VER=$(cat VERSION | tr -d '[:space:]')
-          echo "current=$VER" >> $GITHUB_OUTPUT
+          echo "branch VERSION: $VER"
           IFS='.' read -r MAJ MIN PAT <<< "$VER"
-          NEW="$MAJ.$MIN.$((PAT + 1))"
+          PAT=$((PAT + 1))
+          NEW="$MAJ.$MIN.$PAT"
+          # 若远程已存在同名 tag，继续 +1 直到找到空闲版本（不污染分支）
+          while git ls-remote --tags --exit-code origin "v$NEW" >/dev/null 2>&1; do
+            PAT=$((PAT + 1))
+            NEW="$MAJ.$MIN.$PAT"
+          done
           echo "new=$NEW" >> $GITHUB_OUTPUT
-          echo "$NEW" > VERSION
-
-      - name: Commit & push version bump
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || echo "No changes to commit"
-          git push || echo "Push failed, may already be pushed"
+          echo "Resolved release version: v$NEW"
 
   build:
     name: Build (${{ matrix.os }})
-    needs: [version-bump]
+    needs: [version]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -55,6 +53,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Apply bumped version locally
+        shell: bash
+        run: echo "${{ needs.version.outputs.new }}" > VERSION
 
       - name: Set platform info
         id: platform
@@ -146,13 +148,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 版本号已由 version-bump job 自增并写回 VERSION，这里只读取打包产物内一致的版本
-      - name: Read current version
+      # 版本号由 version job 计算，直接复用，不再读取/回写分支 VERSION
+      - name: Use computed version
         id: version
         shell: bash
-        run: |
-          VER=$(cat VERSION | tr -d '[:space:]')
-          echo "current=$VER" >> $GITHUB_OUTPUT
+        run: echo "current=${{ needs.version.outputs.new }}" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
