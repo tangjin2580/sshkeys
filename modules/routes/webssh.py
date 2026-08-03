@@ -177,6 +177,7 @@ def webssh_send():
 
 
 @webssh_bp.route("/recv", methods=["GET"])
+@limiter.exempt
 def webssh_recv():
     """Long-polling for SSH output (exempt from rate limiting)"""
     session_id = request.args.get("session_id", "")

@@ -96,9 +96,8 @@ def _handle_429(e):
         "code": "RATE_LIMIT_EXCEEDED"
     }), 429
 
-# Exempt SSE and WebSSH polling from rate limiting
-limiter.exempt("/api/events")
-limiter.exempt("/api/webssh/recv")
+# Note: Exempt SSE and WebSSH polling from rate limiting
+# (Applied directly to route decorators below)
 
 # Register WebSSH HTTP API routes (using standard HTTP instead of SocketIO)
 try:
@@ -116,9 +115,10 @@ def index():
     return render_template("index.html", key_types=KEY_TYPES)
 
 # ==================== SSE Endpoint ====================
+# Note: SSE connections are exempt from rate limiting
+# because EventSource maintains long-lived connections
 
 @app.route("/api/events")
-@limiter.limit("30 per minute")  # SSE connections are limited
 def sse_events():
     """SSE event stream with time-limited connections to prevent thread exhaustion"""
     q: queue.Queue = queue.Queue(maxsize=100)
