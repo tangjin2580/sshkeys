@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller 打包配置 - SSH Key Manager (单文件模式)
-打包命令: pyinstaller main.spec
-输出: dist/ssh-key-manager-<platform> (单个文件)
+PyInstaller Build Configuration - SSH Key Manager (Single File Mode)
+Build command: pyinstaller main.spec
+Output: dist/ssh-key-manager-<platform> (single file)
 """
 
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 
 block_cipher = None
 
-# 平台对应的输出文件名和图标
+# Platform-specific output filename and icon
 if sys.platform == 'win32':
     exe_name = 'ssh-key-manager-windows'
     app_icon = 'asset/icon.ico'
@@ -20,9 +20,9 @@ elif sys.platform == 'darwin':
     app_icon = 'asset/icon.icns'
 else:
     exe_name = 'ssh-key-manager-linux'
-    app_icon = None  # Linux bootloader 不支持图标
+    app_icon = None  # Linux bootloader doesn't support icons
 
-# 图标文件不存在时降级为 None（避免打包报错）
+# Fallback to None if icon file doesn't exist (prevent build error)
 if app_icon is not None and not os.path.exists(app_icon):
     app_icon = None
 
@@ -52,6 +52,7 @@ a = Analysis(
         'paramiko',
         'waitress',
         'flask',
+        'flask_limiter',
         'jinja2',
         'cryptography',
         'nacl',
@@ -61,6 +62,8 @@ a = Analysis(
         'modules.routes.ssh_config',
         'modules.routes.connections',
         'modules.routes.platform',
+        'modules.routes.filesync',
+        'modules.routes.webssh',
         'modules.webssh',
         'modules.webssh_routes',
         'modules.webssh_sessions',

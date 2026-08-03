@@ -6,3 +6,5 @@ requests>=2.31
 PyQt6>=6.5
 Pillow>=10.0
 bcrypt>=4.0
+flask-limiter>=3.5
+pytest>=7.0

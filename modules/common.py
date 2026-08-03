@@ -1,23 +1,29 @@
 """
-modules/common.py — 共享工具和全局状态
-提供 SSE 广播、统一错误响应、进度回调等基础设施。
+modules/common.py - Shared utilities and global state
+Provides SSE broadcast, unified error response, progress callbacks, etc.
 """
 
 import json
 import queue
 import threading
 from datetime import datetime
-from flask import jsonify
+from typing import Any, Callable, Optional, List
+from flask import jsonify, Response
 
 
-# ==================== 统一错误响应 ====================
+# ==================== Unified Error Response ====================
 
-def error_response(message, code=None, suggestion=None, status=400):
+def error_response(
+    message: str,
+    code: Optional[str] = None,
+    suggestion: Optional[str] = None,
+    status: int = 400
+) -> tuple[Response, int]:
     """
-    返回统一的 JSON 错误响应。
-    格式: {"success": false, "error": "...", "code": "...", "suggestion": "..."}
+    Return unified JSON error response.
+    Format: {"success": false, "error": "...", "code": "...", "suggestion": "..."}
     """
-    payload = {"success": False, "error": message}
+    payload: dict[str, Any] = {"success": False, "error": message}
     if code:
         payload["code"] = code
     if suggestion:
@@ -25,22 +31,22 @@ def error_response(message, code=None, suggestion=None, status=400):
     return jsonify(payload), status
 
 
-# ==================== SSE 基础设施 ====================
+# ==================== SSE Infrastructure ====================
 
-# SSE 消息队列 (全局，每个请求一个队列)
-_sse_queues = []
+# SSE message queues (global, one queue per request)
+_sse_queues: List[queue.Queue] = []
 _sse_lock = threading.Lock()
 
-# 存储最近生成的密钥（会话级）
-_current_keys = {}
+# Store recently generated keys (session-level)
+_current_keys: dict[str, Any] = {}
 
 
-def _sse_broadcast(event: str, data: dict):
-    """向所有已连接的 SSE 客户端广播消息"""
+def _sse_broadcast(event: str, data: dict[str, Any]) -> None:
+    """Broadcast message to all connected SSE clients"""
     msg = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
     with _sse_lock:
         queues = list(_sse_queues)
-    dead_queues = []
+    dead_queues: List[queue.Queue] = []
     for q in queues:
         try:
             q.put_nowait(msg)
@@ -53,20 +59,20 @@ def _sse_broadcast(event: str, data: dict):
                     _sse_queues.remove(q)
 
 
-def _create_progress_callback():
-    """创建一个向 SSE 推送进度的回调函数"""
-    def callback(message: str):
+def _create_progress_callback() -> Callable[[str], None]:
+    """Create a callback function that pushes progress to SSE"""
+    def callback(message: str) -> None:
         _sse_broadcast("progress", {"message": message, "time": datetime.now().strftime("%H:%M:%S")})
     return callback
 
 
-def _sse_cleanup_stale():
+def _sse_cleanup_stale() -> int:
     """
-    手动清理死/僵 SSE 队列（队列满视为僵死）。
-    返回被清理的队列数量。
+    Manually clean up dead/stale SSE queues (full queue is considered stale).
+    Returns the number of queues cleaned up.
     """
     removed = 0
-    stale = []
+    stale: List[queue.Queue] = []
     with _sse_lock:
         for q in list(_sse_queues):
             if q.full():
@@ -80,7 +86,7 @@ def _sse_cleanup_stale():
     return removed
 
 
-def get_sse_queue_count():
-    """返回当前 SSE 队列数量（线程安全）。"""
+def get_sse_queue_count() -> int:
+    """Return current SSE queue count (thread-safe)."""
     with _sse_lock:
         return len(_sse_queues)

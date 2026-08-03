@@ -1,12 +1,13 @@
 """
-WebSSH 兼容层 — 拆分后保留此文件以兼容旧 import
-实际代码已拆分为:
-  - webssh_sessions.py  (会话管理、SSH 客户端)
-  - webssh_sftp.py      (SFTP / exec 文件操作)
-  - webssh_routes.py    (HTTP 路由注册)
+WebSSH Compatibility Layer - Retained for backward compatibility with old imports
+Actual code has been split into:
+  - webssh_sessions.py  (session management, SSH client)
+  - webssh_sftp.py      (SFTP / exec file operations)
+  - webssh_routes.py    (HTTP route registration)
+  - routes/webssh.py    (Blueprint-based routes)
 """
 
-# 会话管理（main.py / server.py 从这里 import）
+# Session management (main.py / server.py import from here)
 from modules.webssh_sessions import (
     _ssh_sessions,
     _ssh_lock,
@@ -22,7 +23,7 @@ from modules.webssh_sessions import (
     _start_cleanup_thread,
 )
 
-# SFTP 辅助
+# SFTP helpers
 from modules.webssh_sftp import (
     _get_session,
     _get_sftp,
@@ -31,5 +32,5 @@ from modules.webssh_sftp import (
     _exec_ls,
 )
 
-# 路由注册（server.py 从这里 import）
+# Route registration (server.py imports from here)
 from modules.webssh_routes import register_webssh_routes

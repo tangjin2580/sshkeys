@@ -1,18 +1,19 @@
 """
-WebSSH SFTP / 文件管理 — exec 降级模式 + SFTP 辅助函数
+WebSSH SFTP / File Management - exec fallback mode + SFTP helper functions
 """
 
 import os
 import time
 import logging
+from typing import Any, Optional, Tuple, List, Dict
 
 from modules.webssh_sessions import _ssh_sessions, _ssh_lock
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(session_id: str):
-    """获取会话信息"""
+def _get_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get session info"""
     with _ssh_lock:
         session = _ssh_sessions.get(session_id)
         if session:
@@ -21,8 +22,8 @@ def _get_session(session_id: str):
     return None
 
 
-def _get_sftp(session_id: str):
-    """从会话中获取 SFTP client，不存在返回 None"""
+def _get_sftp(session_id: str) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
+    """Get SFTP client from session, returns None if not available"""
     with _ssh_lock:
         session = _ssh_sessions.get(session_id)
         if session:
@@ -31,8 +32,8 @@ def _get_sftp(session_id: str):
     return None, None
 
 
-def _exec_command(client, cmd, timeout=15):
-    """在 SSH 连接上执行命令（新 channel，不影响交互式 shell）"""
+def _exec_command(client: Any, cmd: str, timeout: int = 15) -> Tuple[str, str, int]:
+    """Execute command on SSH connection (new channel, doesn't affect interactive shell)"""
     try:
         stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
         out = stdout.read().decode("utf-8", errors="replace")
@@ -43,13 +44,13 @@ def _exec_command(client, cmd, timeout=15):
         return "", str(e), -1
 
 
-def _shell_quote(s):
-    """安全地用单引号包裹路径，防止 shell 注入"""
+def _shell_quote(s: str) -> str:
+    """Safely quote path with single quotes to prevent shell injection"""
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-def _exec_ls(client, path):
-    """exec 模式列目录：用 ls -la 解析输出（兼容多种 ls 格式）"""
+def _exec_ls(client: Any, path: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """exec mode list directory: parse ls -la output (compatible with multiple ls formats)"""
     if not path or path == "~":
         out, err, code = _exec_command(client, "echo $HOME")
         if code == 0:
@@ -57,7 +58,7 @@ def _exec_ls(client, path):
         else:
             path = "/"
 
-    # 优先用 --time-style=long-iso（GNU/Linux），失败则尝试 BSD 的 -D 格式
+    # Prefer --time-style=long-iso (GNU/Linux), fall back to BSD -D format
     for fmt_flag in ["--time-style=long-iso", "-D '%Y-%m-%d %H:%M'"]:
         cmd = f"ls -la {fmt_flag} {_shell_quote(path)}"
         out, err, code = _exec_command(client, cmd)
@@ -69,11 +70,11 @@ def _exec_ls(client, path):
         if code != 0:
             return path, []
 
-    # 获取规范路径
+    # Get canonical path
     pwd_out, _, _ = _exec_command(client, f"cd {_shell_quote(path)} && pwd -P")
     real_path = pwd_out.strip() if pwd_out.strip() else path
 
-    items = []
+    items: List[Dict[str, Any]] = []
     for line in out.strip().split("\n"):
         line = line.strip()
         if not line or line.startswith("total "):
@@ -83,7 +84,7 @@ def _exec_ls(client, path):
             continue
         perms = parts[0]
 
-        # 判断日期时间列数，确定文件名起始位置
+        # Determine filename start position based on date/time columns
         if '-' in parts[5]:
             name = ' '.join(parts[7:])
         else:

@@ -1,6 +1,6 @@
 """
-SSH 密钥生成模块
-支持 Ed25519 / Ed448 / ECDSA / RSA 全系列，覆盖旧版到最新版本
+SSH Key Generator Module
+Supports Ed25519 / ECDSA / RSA series (modern recommended algorithms)
 """
 
 import os
@@ -10,7 +10,7 @@ import logging
 from typing import Tuple, Optional
 
 from cryptography.hazmat.primitives import serialization as crypto_serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, dsa, ed25519, ec
+from cryptography.hazmat.primitives.asymmetric import rsa, ed25519, ec
 from cryptography.hazmat.backends import default_backend
 
 from modules.utils import safe_chmod
@@ -20,44 +20,49 @@ logger = logging.getLogger(__name__)
 
 def compute_fingerprint(pub_str: str) -> str:
     """
-    计算 OpenSSH 格式公钥的指纹（SHA256，与 ssh-keygen -lf 输出一致）
-    pub_str: OpenSSH 格式公钥字符串，如 "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host"
+    Compute fingerprint of OpenSSH format public key (SHA256, matches ssh-keygen -lf output)
+    pub_str: OpenSSH format public key string, e.g. "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host"
     Returns: "SHA256:xxxx"
     """
-    # 解析出 base64 部分
+    # Parse base64 part
     parts = pub_str.strip().split()
     if len(parts) < 2:
         return ""
     b64data = parts[1]
-    # base64 解码得到 wire format
-    wire = base64.b64decode(b64data)
-    # SHA256 计算摘要
+    try:
+        # base64 decode to wire format
+        wire = base64.b64decode(b64data)
+    except Exception:
+        return ""
+    # SHA256 hash
     digest = hashlib.sha256(wire).digest()
-    # 标准 base64 编码（非 urlsafe），去掉 padding
+    # Standard base64 encoding (not urlsafe), strip padding
     fp_b64 = base64.b64encode(digest).rstrip(b"=").decode("ascii")
     return f"SHA256:{fp_b64}"
 
-# 支持的密钥类型（供前端下拉框使用）
-# type: 算法类型，size: 密钥位数，curve: ECDSA 曲线名（可选）
+# Supported key types (for frontend dropdown)
+# type: algorithm type, size: key bits, curve: ECDSA curve name (optional)
 KEY_TYPES = {
-    # --- Edwards 曲线（现代推荐） ---
-    "Ed25519（推荐）":    {"type": "ed25519", "size": 256},
+    # --- Edwards curve (modern recommended) ---
+    "Ed25519 (Recommended)": {"type": "ed25519", "size": 256},
 
     # --- ECDSA ---
-    "ECDSA P-256":        {"type": "ecdsa",   "size": 256, "curve": "secp256r1"},
-    "ECDSA P-384":        {"type": "ecdsa",   "size": 384, "curve": "secp384r1"},
-    "ECDSA P-521":        {"type": "ecdsa",   "size": 521, "curve": "secp521r1"},
+    "ECDSA P-256":          {"type": "ecdsa", "size": 256, "curve": "secp256r1"},
+    "ECDSA P-384":          {"type": "ecdsa", "size": 384, "curve": "secp384r1"},
+    "ECDSA P-521":          {"type": "ecdsa", "size": 521, "curve": "secp521r1"},
 
-    # --- RSA ---
-    "RSA 2048":            {"type": "rsa", "size": 2048},
-    "RSA 3072":            {"type": "rsa", "size": 3072},
-    "RSA 4096":            {"type": "rsa", "size": 4096},
-    "RSA 8192":            {"type": "rsa", "size": 8192},
+    # --- RSA (limited to 4096 for security/performance balance) ---
+    "RSA 2048":             {"type": "rsa", "size": 2048},
+    "RSA 3072":             {"type": "rsa", "size": 3072},
+    "RSA 4096 (Max)":       {"type": "rsa", "size": 4096},
 }
 
 
 class SSHKeyGenerator:
-    """SSH 密钥对生成器"""
+    """SSH Key Pair Generator"""
+
+    # Maximum RSA key size for security/performance
+    MAX_RSA_KEY_SIZE = 4096
 
     @staticmethod
     def generate_key_pair(
@@ -68,32 +73,42 @@ class SSHKeyGenerator:
         curve: Optional[str] = None,
     ) -> Tuple[str, str, bytes, bytes]:
         """
-        生成 SSH 密钥对
+        Generate SSH key pair
 
         Args:
-            key_type: 密钥类型 (ed25519 / ecdsa / rsa / dsa)
-            key_size: 密钥位数
-            passphrase: 可选私钥密码
-            comment: 公钥注释
-            curve: ECDSA 曲线名 (secp256r1 / secp384r1 / secp521r1)
+            key_type: Key type (ed25519 / ecdsa / rsa)
+            key_size: Key size in bits
+            passphrase: Optional private key password
+            comment: Public key comment
+            curve: ECDSA curve name (secp256r1 / secp384r1 / secp521r1)
 
         Returns:
             (private_key_str, public_key_str, private_key_bytes, public_key_bytes)
-        """
-        logger.info(f"开始生成 {key_type.upper()} 密钥 (bits={key_size})")
 
-        # 1. 生成原始密钥
+        Raises:
+            ValueError: If key type is unsupported or key size exceeds maximum
+        """
+        logger.info(f"Generating {key_type.upper()} key (bits={key_size})")
+
+        # Validate RSA key size
+        if key_type == "rsa" and key_size > SSHKeyGenerator.MAX_RSA_KEY_SIZE:
+            raise ValueError(
+                f"RSA key size {key_size} exceeds maximum {SSHKeyGenerator.MAX_RSA_KEY_SIZE}. "
+                "For security and performance, RSA keys are limited to 4096 bits."
+            )
+
+        # 1. Generate raw key
         if key_type == "ed25519":
             private_key = ed25519.Ed25519PrivateKey.generate()
             public_key = private_key.public_key()
         elif key_type == "ecdsa":
-            # 曲线映射（NIST 三条标准曲线）
+            # Curve mapping (NIST standard curves)
             curve_map = {
                 "secp256r1": ec.SECP256R1(),
                 "secp384r1": ec.SECP384R1(),
                 "secp521r1": ec.SECP521R1(),
             }
-            # 兼容旧接口：如果没有传 curve，用 key_size 反查
+            # Fallback: derive curve from key_size if not provided
             if not curve:
                 size_curve_map = {256: "secp256r1", 384: "secp384r1", 521: "secp521r1"}
                 curve = size_curve_map.get(key_size, "secp256r1")
@@ -107,17 +122,10 @@ class SSHKeyGenerator:
                 backend=default_backend(),
             )
             public_key = private_key.public_key()
-        elif key_type == "dsa":
-            # DSA 仅支持 1024 位（OpenSSH 限制），忽略 key_size 参数
-            private_key = dsa.generate_private_key(
-                key_size=1024,
-                backend=default_backend(),
-            )
-            public_key = private_key.public_key()
         else:
-            raise ValueError(f"不支持的密钥类型: {key_type}")
+            raise ValueError(f"Unsupported key type: {key_type}")
 
-        # 2. 确定加密算法（如果有密码）
+        # 2. Determine encryption (if password provided)
         if passphrase:
             encryption = crypto_serialization.BestAvailableEncryption(
                 passphrase.encode("utf-8")
@@ -125,7 +133,7 @@ class SSHKeyGenerator:
         else:
             encryption = crypto_serialization.NoEncryption()
 
-        # 3. 序列化私钥 → OpenSSH 格式
+        # 3. Serialize private key -> OpenSSH PEM format
         private_key_bytes = private_key.private_bytes(
             encoding=crypto_serialization.Encoding.PEM,
             format=crypto_serialization.PrivateFormat.OpenSSH,
@@ -133,16 +141,16 @@ class SSHKeyGenerator:
         )
         private_key_str = private_key_bytes.decode("utf-8")
 
-        # 4. 序列化公钥 → OpenSSH 格式 (ssh-ed25519 AAAA... comment)
+        # 4. Serialize public key -> OpenSSH format (ssh-ed25519 AAAA... comment)
         public_key_bytes = public_key.public_bytes(
             encoding=crypto_serialization.Encoding.OpenSSH,
             format=crypto_serialization.PublicFormat.OpenSSH,
         )
         public_key_str = public_key_bytes.decode("utf-8").strip()
-        # 追加注释（OpenSSH 格式：<type> <base64> <comment>）
+        # Append comment (OpenSSH format: <type> <base64> <comment>)
         public_key_str_with_comment = f"{public_key_str} {comment}"
 
-        logger.info(f"密钥生成成功: {key_type.upper()} / {key_size} bits")
+        logger.info(f"Key generated successfully: {key_type.upper()} / {key_size} bits")
         return (
             private_key_str,
             public_key_str_with_comment,
@@ -158,26 +166,26 @@ class SSHKeyGenerator:
         public_path: str,
     ) -> None:
         """
-        将密钥保存到磁盘，私钥自动设置 600 权限
+        Save keys to disk with proper permissions
 
         Args:
-            private_key_str: 私钥 PEM 字符串
-            public_key_str: 公钥 OpenSSH 字符串
-            private_path: 私钥保存路径
-            public_path:  公钥保存路径
+            private_key_str: Private key PEM string
+            public_key_str: Public key OpenSSH string
+            private_path: Private key save path
+            public_path: Public key save path
         """
-        # 确保目录存在
+        # Ensure directory exists
         os.makedirs(os.path.dirname(private_path), exist_ok=True)
 
-        # 写入私钥
+        # Write private key
         with open(private_path, "w", encoding="utf-8") as f:
             f.write(private_key_str)
-        # 设置权限：仅拥有者可读写 (0o600)
+        # Set permissions: owner read/write only (0o600)
         safe_chmod(private_path, 0o600)
 
-        # 写入公钥
+        # Write public key
         with open(public_path, "w", encoding="utf-8") as f:
             f.write(public_key_str + "\n")
         safe_chmod(public_path, 0o644)
 
-        logger.info(f"密钥文件已保存: {private_path} / {public_path}")
+        logger.info(f"Key files saved: {private_path} / {public_path}")

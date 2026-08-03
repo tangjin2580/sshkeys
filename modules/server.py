@@ -1,5 +1,5 @@
 """
-Flask 服务端 — 提供 REST API + SSE 实时推送
+Flask Server — REST API + SSE Real-time Push
 """
 
 import os
@@ -15,16 +15,18 @@ from flask import (
     Flask, render_template, request, jsonify,
     Response, stream_with_context, g,
 )
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from modules.common import _sse_queues, _sse_lock, error_response
 from modules.key_generator import KEY_TYPES
 
 logger = logging.getLogger(__name__)
 
-# --- Flask App 初始化 ---
+# --- Flask App Initialization ---
 
 if getattr(sys, "frozen", False):
-    # PyInstaller --onefile 模式：资源在临时解压目录中
+    # PyInstaller --onefile mode: resources in temp extraction directory
     BASE_DIR = Path(sys._MEIPASS)
 else:
     BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,80 +37,113 @@ STATIC_DIR = BASE_DIR / "static"
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
-# ============ 请求日志 & 全局错误处理器 ============
+# --- Rate Limiter Configuration ---
+# In-memory limiter using client IP as key
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["200 per minute"],
+    storage_uri="memory://",
+)
+
+
+def get_real_remote_address() -> str:
+    """Get real client IP, considering proxy headers"""
+    # Check X-Forwarded-For header (for reverse proxy setups)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # Take the first IP (original client)
+        return forwarded.split(",")[0].strip()
+    return get_remote_address()
+
+# ============ Request Logging & Global Error Handlers ============
 
 @app.before_request
 def _log_request_start():
-    """记录请求开始时间和基本信息"""
+    """Log request start time and basic info"""
     g.request_start = _time.time()
     g.request_path = request.path
-    # 不记录 SSE 和长轮询（太频繁）
+    # Skip SSE and long-polling endpoints (too frequent)
     if not request.path.startswith('/api/events') and not request.path.startswith('/api/webssh/recv'):
-        logger.info(f"[REQUEST] {request.method} {request.path} — 开始")
+        logger.info(f"[REQUEST] {request.method} {request.path} - started")
 
 @app.after_request
 def _log_request_end(response):
-    """记录请求耗时和状态"""
+    """Log request duration and status"""
     if hasattr(g, 'request_start'):
         duration = round((_time.time() - g.request_start) * 1000, 2)
-        # 只记录耗时超过 500ms 的请求，或错误请求
+        # Only log slow requests (>500ms) or errors
         if duration > 500 or response.status_code >= 400:
-            logger.warning(f"[REQUEST] {g.request_path} — {response.status_code} （耗时 {duration}ms）")
+            logger.warning(f"[REQUEST] {g.request_path} - {response.status_code} (took {duration}ms)")
     return response
 
 @app.errorhandler(500)
 def _handle_500(e):
-    """全局 500 错误处理器：返回 JSON 而非 HTML"""
-    logger.exception("[500] 未捕获的异常")
+    """Global 500 error handler: return JSON instead of HTML"""
+    logger.exception("[500] Unhandled exception")
     return jsonify({
         "success": False,
-        "error": "服务器内部错误，请查看日志",
+        "error": "Internal server error, please check logs",
         "code": "INTERNAL_ERROR"
     }), 500
 
-# 注册 WebSSH HTTP API 路由（不再使用 SocketIO）
+@app.errorhandler(429)
+def _handle_429(e):
+    """Rate limit exceeded handler"""
+    return jsonify({
+        "success": False,
+        "error": "Rate limit exceeded. Please slow down your requests.",
+        "code": "RATE_LIMIT_EXCEEDED"
+    }), 429
+
+# Exempt SSE and WebSSH polling from rate limiting
+limiter.exempt("/api/events")
+limiter.exempt("/api/webssh/recv")
+
+# Register WebSSH HTTP API routes (using standard HTTP instead of SocketIO)
 try:
     from modules.webssh import register_webssh_routes, cleanup_all_sessions
     register_webssh_routes(app)
-    logger.info("  [WebSSH] HTTP API 路由已注册")
+    logger.info("  [WebSSH] HTTP API routes registered")
 except Exception as e:
-    logger.warning(f"  [WebSSH] 注册失败: {e}")
+    logger.warning(f"  [WebSSH] Registration failed: {e}")
 
-# ==================== 页面路由 ====================
+# ==================== Page Routes ====================
 
 @app.route("/")
 def index():
-    """主页面"""
+    """Main page"""
     return render_template("index.html", key_types=KEY_TYPES)
 
-# ==================== SSE 端点 ====================
+# ==================== SSE Endpoint ====================
 
 @app.route("/api/events")
+@limiter.limit("30 per minute")  # SSE connections are limited
 def sse_events():
-    """SSE 事件流（限时连接，防止占满线程）"""
+    """SSE event stream with time-limited connections to prevent thread exhaustion"""
     q: queue.Queue = queue.Queue(maxsize=100)
     with _sse_lock:
         _sse_queues.append(q)
     _sse_start = _time.time()
-    _SSE_MAX_LIFETIME = 120  # 单次连接最多 120 秒，断开后前端自动重连
+    _SSE_MAX_LIFETIME = 120  # Max 120 seconds per connection, frontend will auto-reconnect
 
     def generate():
         try:
-            # 发送初始连接确认
-            yield f"event: connected\ndata: {json.dumps({'message': 'SSE 已连接'})}\n\n"
+            # Send initial connection confirmation
+            yield f"event: connected\ndata: {json.dumps({'message': 'SSE connected'})}\n\n"
             while True:
-                # 超过最大生存时间，主动断开（前端 EventSource 会自动重连）
+                # Exit if max lifetime exceeded (frontend EventSource will auto-reconnect)
                 if _time.time() - _sse_start > _SSE_MAX_LIFETIME:
-                    yield f"event: reconnect\ndata: {json.dumps({'message': '请重连'})}\n\n"
+                    yield f"event: reconnect\ndata: {json.dumps({'message': 'Please reconnect'})}\n\n"
                     break
                 try:
                     msg = q.get(timeout=5)
                     if msg is None:
-                        # 收到关闭哨兵，优雅退出（不发送额外数据）
+                        # Received close sentinel, exit gracefully
                         break
                     yield msg
                 except queue.Empty:
-                    # 发送心跳保持连接
+                    # Send heartbeat to keep connection alive
                     yield ": heartbeat\n\n"
         except GeneratorExit:
             pass
@@ -126,11 +161,12 @@ def sse_events():
         },
     )
 
-# ==================== SSE 管理 API ====================
+# ==================== SSE Admin API ====================
 
 @app.route("/api/admin/sse-cleanup", methods=["POST"])
+@limiter.limit("10 per minute")
 def sse_cleanup():
-    """手动清理僵死 SSE 队列（满队列视为僵死）。"""
+    """Manually clean up stale SSE queues (full queues are considered stale)"""
     from modules.common import _sse_cleanup_stale, get_sse_queue_count
     removed = _sse_cleanup_stale()
     return jsonify({
@@ -141,21 +177,22 @@ def sse_cleanup():
 
 
 @app.route("/api/admin/sse-status", methods=["GET"])
+@limiter.limit("30 per minute")
 def sse_status():
-    """返回当前 SSE 队列状态。"""
+    """Return current SSE queue status"""
     from modules.common import get_sse_queue_count
     return jsonify({
         "success": True,
         "queue_count": get_sse_queue_count(),
     })
 
-# ==================== 启动 ====================
+# ==================== App Factory ====================
 
 def create_app():
     """
-    创建 Flask 应用实例。
-    返回 app，供 main.py 使用。
-    （WebSSH 路由已在模块级别注册，Blueprint 在此注册）
+    Create Flask application instance.
+    Returns app for main.py to use.
+    (WebSSH routes registered at module level, Blueprints registered here)
     """
     from modules.routes.keys import keys_bp
     from modules.routes.ssh_config import ssh_config_bp
