@@ -13,8 +13,39 @@ permissions:
   contents: write
 
 jobs:
+  # 计算本次发布的版本号：仅在本工作流内部本地使用（用于打包产物与 release tag），
+  # 绝不再 commit+push 回工作分支，避免污染 main。
+  # 通过 ls-remote 查重，连续 push 时自动顺延到空闲版本号，避免 tag 冲突。
+  version:
+    name: Compute Version
+    runs-on: ubuntu-latest
+    outputs:
+      new: ${{ steps.calc.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next free version
+        id: calc
+        shell: bash
+        run: |
+          VER=$(cat VERSION | tr -d '[:space:]')
+          echo "branch VERSION: $VER"
+          IFS='.' read -r MAJ MIN PAT <<< "$VER"
+          PAT=$((PAT + 1))
+          NEW="$MAJ.$MIN.$PAT"
+          # 若远程已存在同名 tag，继续 +1 直到找到空闲版本（不污染分支）
+          while git ls-remote --tags --exit-code origin "v$NEW" >/dev/null 2>&1; do
+            PAT=$((PAT + 1))
+            NEW="$MAJ.$MIN.$PAT"
+          done
+          echo "new=$NEW" >> $GITHUB_OUTPUT
+          echo "Resolved release version: v$NEW"
+
   build:
     name: Build (${{ matrix.os }})
+    needs: [version]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -29,6 +60,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Apply bumped version locally
+        shell: bash
+        run: echo "${{ needs.version.outputs.new }}" > VERSION
 
       - name: Setup Python (macOS — use Homebrew venv for Tk 9.0)
         if: matrix.platform == 'macos'
@@ -128,40 +163,18 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read current version
+      # 版本号由 version job 计算，直接复用，不再读取/回写分支 VERSION
+      - name: Use computed version
         id: version
         shell: bash
-        run: |
-          VER=$(cat VERSION | tr -d '[:space:]')
-          echo "current=$VER" >> $GITHUB_OUTPUT
-
-      - name: Bump patch version
-        id: bump
-        shell: bash
-        run: |
-          IFS='.' read -r MAJ MIN PAT <<< "${{ steps.version.outputs.current }}"
-          NEW="$MAJ.$MIN.$((PAT + 1))"
-          echo "new=$NEW" >> $GITHUB_OUTPUT
-
-      - name: Update VERSION file
-        shell: bash
-        run: echo "${{ steps.bump.outputs.new }}" > VERSION
-
-      - name: Commit version bump
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || echo "No changes to commit"
-          git push || echo "Push failed, may already be pushed"
+        run: echo "current=${{ needs.version.outputs.new }}" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -171,7 +184,7 @@ jobs:
       - name: Prepare release assets (direct executable)
         shell: bash
         run: |
-          VER="v${{ steps.bump.outputs.new }}"
+          VER="v${{ steps.version.outputs.current }}"
           echo "=== release contents ==="
           find release/ -type f | head -20
 
@@ -212,19 +225,19 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.new }}
-          name: v${{ steps.bump.outputs.new }}
+          tag_name: v${{ steps.version.outputs.current }}
+          name: v${{ steps.version.outputs.current }}
           body: |
-            ## 🚀 SSH Key Manager v${{ steps.bump.outputs.new }}
+            ## 🚀 SSH Key Manager v${{ steps.version.outputs.current }}
 
             > 自动构建于 `${{ github.sha }}`
 
             ### 下载
             | 平台 | 文件 |
             |---|---|
-            | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.bump.outputs.new }}` |
-            | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe` |
-            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.dmg` |
+            | 🐧 Linux | `ssh-key-manager-linux-v${{ steps.version.outputs.current }}` |
+            | 🪟 Windows | `ssh-key-manager-windows-v${{ steps.version.outputs.current }}.exe` |
+            | 🍎 macOS | `ssh-key-manager-macos-v${{ steps.version.outputs.current }}.dmg` |
 
             ### 使用
             ```bash
@@ -233,8 +246,8 @@ jobs:
             # macOS: 双击 .dmg，将 SSH Key Manager.app 拖入应用程序文件夹
             ```
           files: |
-            release/ssh-key-manager-windows-v${{ steps.bump.outputs.new }}.exe
-            release/ssh-key-manager-linux-v${{ steps.bump.outputs.new }}
-            release/ssh-key-manager-macos-v${{ steps.bump.outputs.new }}.dmg
+            release/ssh-key-manager-windows-v${{ steps.version.outputs.current }}.exe
+            release/ssh-key-manager-linux-v${{ steps.version.outputs.current }}
+            release/ssh-key-manager-macos-v${{ steps.version.outputs.current }}.dmg
           draft: false
           prerelease: false
