@@ -5,6 +5,7 @@
 import os
 import threading
 import logging
+import concurrent.futures
 from pathlib import Path
 
 from flask import Blueprint, request, jsonify
@@ -69,25 +70,30 @@ def _make_client(cfg):
     return client
 
 
-def _mkdir_p(sftp, remote_path: str):
-    """递归创建远程目录（forward-slash 路径，兼容 Windows OpenSSH）。"""
+def _mkdir_p_cached(sftp, remote_path: str, seen: set):
+    """递归创建远程目录（带 seen 缓存，避免同一目录被反复 stat）。"""
     parts = [p for p in remote_path.replace("\\", "/").split("/") if p]
     current = ""
     for p in parts:
         current = f"{current}/{p}" if current else p
+        if current in seen:
+            continue
         try:
             sftp.stat(current)
         except Exception:
             try:
                 sftp.mkdir(current)
             except Exception:
-                # 根盘符（如 C:）无法创建时跳过
+                # 根盘符（如 C:）或并发已创建时跳过
                 pass
+        seen.add(current)
 
 
-def _put_file(sftp, local_path, remote_path):
-    _mkdir_p(sftp, os.path.dirname(remote_path).replace("\\", "/"))
-    sftp.put(local_path, remote_path.replace("\\", "/"))
+def _ensure_dirs(sftp, remote_dirs):
+    """批量创建所有需要的远程目录，每个目录最多 stat/mkdir 一次。"""
+    seen = set()
+    for d in sorted(set(remote_dirs), key=lambda x: x.count("/")):
+        _mkdir_p_cached(sftp, d, seen)
 
 
 def _build_items(local_paths, remote_paths):
@@ -133,29 +139,48 @@ def list_connections():
 
 @filesync_bp.route("/api/filesync/browse", methods=["GET"])
 def browse():
-    """浏览本地目录。"""
+    """浏览本地目录（服务端分页，文件夹优先排序）。"""
     path = request.args.get("path") or str(Path.home())
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        page_size = max(10, min(500, int(request.args.get("page_size", 100))))
+    except (TypeError, ValueError):
+        page, page_size = 1, 100
     if not os.path.exists(path):
         return jsonify({"success": False, "error": "路径不存在"}), 400
     if os.path.isfile(path):
         return jsonify({"success": False, "error": "这是一个文件"}), 400
     try:
-        entries = []
-        for name in sorted(os.listdir(path)):
+        dirs, files = [], []
+        for name in os.listdir(path):
             full = os.path.join(path, name)
             is_dir = os.path.isdir(full)
             try:
                 size = 0 if is_dir else os.path.getsize(full)
             except OSError:
                 size = 0
-            entries.append({
-                "name": name,
-                "path": full,
-                "is_dir": is_dir,
-                "size": size,
-            })
+            entry = {"name": name, "path": full, "is_dir": is_dir, "size": size}
+            (dirs if is_dir else files).append(entry)
+        dirs.sort(key=lambda e: e["name"].lower())
+        files.sort(key=lambda e: e["name"].lower())
+        all_entries = dirs + files
+        total = len(all_entries)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * page_size
+        slice_entries = all_entries[start:start + page_size]
         parent = os.path.dirname(path) if path not in ("/", "") else None
-        return jsonify({"success": True, "path": path, "parent": parent, "entries": entries})
+        return jsonify({
+            "success": True,
+            "path": path,
+            "parent": parent,
+            "entries": slice_entries,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        })
     except PermissionError:
         return jsonify({"success": False, "error": "权限不足"}), 403
 
@@ -197,21 +222,45 @@ def start_sync():
             client = _make_client(cfg)
             sftp = client.open_sftp()
             items = _build_items(local_paths, remote_paths)
-            with _fs_lock:
-                _fs_progress = {"total": len(items), "done": 0, "current": ""}
-            for i, (lf, rf) in enumerate(items):
+            if not items:
+                _add_log("warn", "没有可同步的文件")
                 with _fs_lock:
-                    _fs_progress["done"] = i
-                    _fs_progress["current"] = os.path.basename(lf)
-                try:
-                    _put_file(sftp, lf, rf)
-                    _add_log("info", f"✓ {lf} → {rf}")
-                except Exception as e:
-                    _add_log("error", f"✗ {lf}: {e}")
-            with _fs_lock:
-                _fs_progress["done"] = len(items)
-                _fs_progress["current"] = "完成"
-            _add_log("success", "同步完成 ✓")
+                    _fs_progress = {"total": 0, "done": 0, "current": ""}
+            else:
+                # 一次性预建所有远程目录（带缓存，避免每文件反复 stat，这是慢的主因）
+                parent_dirs = {os.path.dirname(rf).replace("\\", "/") for _, rf in items}
+                _add_log("info", f"准备创建 {len(parent_dirs)} 个远程目录…")
+                _ensure_dirs(sftp, parent_dirs)
+
+                with _fs_lock:
+                    _fs_progress = {"total": len(items), "done": 0, "current": ""}
+                _add_log("info", f"开始并发传输 {len(items)} 个文件…")
+
+                # 每个工作线程使用独立的 SFTP 会话（同一 transport 多通道），实现并发推送
+                tlocal = threading.local()
+
+                def do_one(item):
+                    lf, rf = item
+                    try:
+                        if not hasattr(tlocal, "sftp"):
+                            tlocal.sftp = client.open_sftp()
+                        tlocal.sftp.put(lf, rf.replace("\\", "/"))
+                        with _fs_lock:
+                            _fs_progress["done"] += 1
+                            _fs_progress["current"] = os.path.basename(lf)
+                        _add_log("info", f"✓ {os.path.basename(lf)}")
+                    except Exception as e:
+                        with _fs_lock:
+                            _fs_progress["done"] += 1
+                        _add_log("error", f"✗ {os.path.basename(lf)}: {e}")
+
+                workers = min(8, max(1, os.cpu_count() or 4))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                    list(ex.map(do_one, items))
+
+                with _fs_lock:
+                    _fs_progress["current"] = "完成"
+                _add_log("success", "同步完成 ✓")
         except Exception as e:
             _add_log("error", f"同步失败: {e}")
         finally:

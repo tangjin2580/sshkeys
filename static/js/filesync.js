@@ -9,6 +9,10 @@ let fsLastClicked = null;
 let fsItems = [];          // [{local, remote}]
 let fsPollTimer = null;
 let fsEntriesCache = [];
+let fsPage = 1;            // 当前页（1 起）
+let fsPageSize = 100;      // 每页条数
+let fsTotal = 0;           // 当前目录总条目数
+let fsTotalPages = 1;      // 总页数
 
 // ---------------- 配置读取 ----------------
 function fsGetConfig() {
@@ -70,14 +74,24 @@ function fsTestConn() {
 }
 
 // ---------------- 文件浏览 ----------------
-function fsBrowse(path) {
-    fetch("/api/filesync/browse?path=" + encodeURIComponent(path || ""))
+function fsBrowse(path, page) {
+    // 传 page 表示翻页（保留选择）；不传表示切换目录（回到第 1 页）
+    if (typeof page === "number") {
+        fsPage = page;
+    } else {
+        fsPage = 1;
+    }
+    const isNewPath = (path || "") !== fsCurrentPath;
+    fetch("/api/filesync/browse?path=" + encodeURIComponent(path || "") +
+          "&page=" + fsPage + "&page_size=" + fsPageSize)
         .then(r => r.json())
         .then(d => {
             if (!d.success) { showToast(d.error || "浏览失败", "warning"); return; }
             fsCurrentPath = d.path;
             fsEntriesCache = d.entries || [];
-            fsSelected.clear();
+            fsTotal = d.total || 0;
+            fsTotalPages = d.total_pages || 1;
+            if (isNewPath) fsSelected.clear();
             document.getElementById("fsPath").value = fsCurrentPath;
             fsRenderBrowser(fsEntriesCache);
         })
@@ -110,7 +124,21 @@ function fsRenderBrowser(entries) {
             `<td class="fs-icon">${icon}</td><td>${e.name}</td><td class="fs-size">${size}</td></tr>`;
     });
     html += "</tbody></table>";
+    // 分页条（目录条目过多时翻页，避免页面过长）
+    html += '<div class="fs-pager">' +
+        '<button class="btn btn-outline btn-sm" onclick="fsPagePrev()" ' + (fsPage <= 1 ? "disabled" : "") + '>‹ 上一页</button>' +
+        '<span class="fs-pager-info">第 ' + fsPage + ' / ' + fsTotalPages + ' 页 · 共 ' + fsTotal + ' 项</span>' +
+        '<button class="btn btn-outline btn-sm" onclick="fsPageNext()" ' + (fsPage >= fsTotalPages ? "disabled" : "") + '>下一页 ›</button>' +
+        '</div>';
     body.innerHTML = html;
+}
+
+function fsPagePrev() {
+    if (fsPage > 1) fsBrowse(fsCurrentPath, fsPage - 1);
+}
+
+function fsPageNext() {
+    if (fsPage < fsTotalPages) fsBrowse(fsCurrentPath, fsPage + 1);
 }
 
 function fsToggleSelect(path, ev) {

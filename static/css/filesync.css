@@ -92,6 +92,7 @@
     overflow-y: auto;
     padding: 4px 0;
     min-height: 220px;
+    max-height: 380px;
 }
 .fs-browser-table {
     width: 100%;
@@ -119,6 +120,28 @@
 .fs-browser-table tr.selected { background: var(--primary-light); }
 .fs-browser-table .fs-icon { width: 22px; text-align: center; }
 .fs-browser-table .fs-size { color: var(--text-secondary); text-align: right; white-space: nowrap; }
+
+/* ---------- 文件浏览器分页条 ---------- */
+.fs-pager {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-card);
+}
+.fs-pager-info {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.fs-pager .btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 /* ---------- 日志 ---------- */
 .log-box-full { min-height: 160px; max-height: 220px; }
