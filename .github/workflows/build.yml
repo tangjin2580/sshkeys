@@ -13,8 +13,41 @@ permissions:
   contents: write
 
 jobs:
+  # 版本号前置自增：必须在 build 之前完成，否则打包产物内置的 VERSION
+  # 会落后 release tag 一个 patch，导致已是最新版却提示“有新版本”。
+  version-bump:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    outputs:
+      new: ${{ steps.bump.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read & bump version
+        id: bump
+        shell: bash
+        run: |
+          VER=$(cat VERSION | tr -d '[:space:]')
+          echo "current=$VER" >> $GITHUB_OUTPUT
+          IFS='.' read -r MAJ MIN PAT <<< "$VER"
+          NEW="$MAJ.$MIN.$((PAT + 1))"
+          echo "new=$NEW" >> $GITHUB_OUTPUT
+          echo "$NEW" > VERSION
+
+      - name: Commit & push version bump
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || echo "No changes to commit"
+          git push || echo "Push failed, may already be pushed"
+
   build:
     name: Build (${{ matrix.os }})
+    needs: [version-bump]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -113,33 +146,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 版本号已由 version-bump job 自增并写回 VERSION，这里只读取打包产物内一致的版本
       - name: Read current version
         id: version
         shell: bash
         run: |
           VER=$(cat VERSION | tr -d '[:space:]')
           echo "current=$VER" >> $GITHUB_OUTPUT
-
-      - name: Bump patch version
-        id: bump
-        shell: bash
-        run: |
-          IFS='.' read -r MAJ MIN PAT <<< "${{ steps.version.outputs.current }}"
-          NEW="$MAJ.$MIN.$((PAT + 1))"
-          echo "new=$NEW" >> $GITHUB_OUTPUT
-
-      - name: Update VERSION file
-        shell: bash
-        run: echo "${{ steps.bump.outputs.new }}" > VERSION
-
-      - name: Commit version bump
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new }} [skip ci]" || echo "No changes to commit"
-          git push || echo "Push failed, may already be pushed"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -150,7 +163,7 @@ jobs:
         id: prepare
         shell: bash
         run: |
-          VER="v${{ steps.bump.outputs.new }}"
+          VER="v${{ steps.version.outputs.current }}"
           echo "=== release contents ==="
           find release/ -type f | head -20
 
@@ -222,8 +235,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.new }}
-          name: v${{ steps.bump.outputs.new }}
+          tag_name: v${{ steps.version.outputs.current }}
+          name: v${{ steps.version.outputs.current }}
           target_commitish: ${{ github.ref_name }}
           body: ${{ steps.prepare.outputs.body }}
           files: ${{ steps.prepare.outputs.files }}
